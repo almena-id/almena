@@ -1,0 +1,51 @@
+# https://taskfile.dev
+version: "3"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  run:
+    desc: "Run the CLI from source (arguments: task run -- --help)"
+    cmds:
+      - cargo run --quiet -- {{.CLI_ARGS}}
+
+  build:
+    desc: Build the release binary (target/release/almena)
+    cmds:
+      - cargo build --release --locked
+
+  install:
+    desc: Install the almena binary into ~/.cargo/bin
+    cmds:
+      - cargo install --path . --locked
+
+  test:
+    desc: Run the test suite
+    cmds:
+      - cargo test --locked {{.CLI_ARGS}}
+
+  fmt:
+    desc: Format the code
+    cmds:
+      - cargo fmt
+
+  lint:
+    desc: Check formatting and run clippy with warnings as errors
+    cmds:
+      - cargo fmt --check
+      - cargo clippy --all-targets --locked -- -D warnings
+
+  check:
+    desc: Everything that must pass before finishing a change (lint + test)
+    cmds:
+      - task: lint
+      - task: test
+
+  clean:
+    desc: Remove build output
+    cmds:
+      - cargo clean
