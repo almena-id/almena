@@ -9,6 +9,8 @@
 - `src/commands/` — one module per subcommand, each exposing `run`; `mod.rs` dispatches.
   - `completions.rs` — shell completion scripts (`clap_complete`).
 
+- `.github/workflows/release.yml` — on every push to `main`: lint and test, build the binary for Linux, macOS and Windows, and publish a GitHub release tagged `v<year>.<month>.<n>`. The version is compiled in through `ALMENA_VERSION` (`cli::VERSION`); without it, builds report Cargo.toml's version.
+
 ## Adding a subcommand
 
 1. Add a variant (with its doc comment, which becomes the help text) to `Command` in `src/cli.rs`.

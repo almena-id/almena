@@ -3,8 +3,16 @@
 use clap::{Args, Parser, Subcommand};
 use clap_complete::Shell;
 
+/// The CLI's version: `ALMENA_VERSION` when the build sets it (the release's
+/// `year.month.sequence`, see `.github/workflows/release.yml`), else the crate
+/// version.
+pub const VERSION: &str = match option_env!("ALMENA_VERSION") {
+    Some(version) if !version.is_empty() => version,
+    _ => env!("CARGO_PKG_VERSION"),
+};
+
 #[derive(Debug, Parser)]
-#[command(name = "almena", version, about, long_about = None, propagate_version = true)]
+#[command(name = "almena", version = VERSION, about, long_about = None, propagate_version = true)]
 pub struct Cli {
     #[command(flatten)]
     pub global: GlobalArgs,

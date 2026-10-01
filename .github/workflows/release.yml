@@ -1,0 +1,169 @@
+# Builds the almena binary for Linux, macOS and Windows whenever something is
+# merged into main, and publishes it as a GitHub release of almena-id/almena.
+#
+# Versions are year.month.sequence (e.g. 2026.10.1), as in the mediator: the
+# sequence starts at 1 each month and goes up by one per publication. It is
+# worked out from the git tags v<year>.<month>.<n>, and the release (with its
+# tag) is created only once every binary is built, so a failed build does not
+# use up a number. Runs queue up (never in parallel), so two merges cannot
+# take the same number.
+#
+# The version is compiled into the binary (ALMENA_VERSION): `almena --version`
+# reports it. Cargo.toml keeps a SemVer version of its own, because Cargo
+# refuses the leading zero of the month (2026.09.1 is not valid SemVer).
+#
+# Each target builds on its own runner, in parallel. The release holds one
+# archive per target and SHA256SUMS:
+#
+#   almena-<version>-x86_64-unknown-linux-gnu.tar.gz    Linux x86_64 (Ubuntu 24.04+)
+#   almena-<version>-aarch64-apple-darwin.tar.gz        macOS Apple silicon
+#   almena-<version>-x86_64-pc-windows-msvc.zip         Windows x86_64
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    name: Work out the version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Next year.month.sequence
+        id: next
+        run: |
+          month=$(date -u +%Y.%m)
+          last=$(git tag --list "v${month}.*" | sed "s/^v${month}\.//" | grep -E '^[0-9]+$' | sort -n | tail -n 1)
+          version="${month}.$(( ${last:-0} + 1 ))"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Version: $version"
+
+  check:
+    name: Lint and test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatting
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Tests
+        run: cargo test --locked
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: [version, check]
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      ALMENA_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Check the version it reports
+        run: |
+          reported=$("target/${{ matrix.target }}/release/almena" --version)
+          echo "$reported"
+          test "$reported" = "almena $ALMENA_VERSION"
+
+      - name: Package
+        run: |
+          name="almena-${ALMENA_VERSION}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp README.md LICENSE "dist/$name/"
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            cp "target/${{ matrix.target }}/release/almena.exe" "dist/$name/"
+            (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null)
+          else
+            cp "target/${{ matrix.target }}/release/almena" "dist/$name/"
+            tar -C dist -czf "dist/$name.tar.gz" "$name"
+          fi
+          rm -rf "dist/$name"
+          ls -l dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: almena-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish ${{ needs.version.outputs.version }}
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      # The release and its version tag.
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: almena-*
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create the release and tag the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "almena $VERSION" \
+            --generate-notes
