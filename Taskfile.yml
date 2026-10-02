@@ -49,3 +49,9 @@ tasks:
     desc: Remove build output
     cmds:
       - cargo clean
+
+  clean:all:
+    desc: Leave the repository as cloned — clean, plus .env
+    cmds:
+      - task: clean
+      - find . -maxdepth 1 -name '.env*' ! -name '.env.example' -exec rm -f {} +
