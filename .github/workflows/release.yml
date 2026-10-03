@@ -29,6 +29,9 @@
 #   Windows   Authenticode, through Azure Trusted Signing
 #   Linux     SHA256SUMS.asc, by the Almena release key
 #
+# Getting a release into Homebrew, Scoop and winget is a separate step, run
+# by hand: distribute.yml.
+#
 # The secrets and variables are the organization's, shared with the wallet;
 # how each one is obtained is in the wallet's docs/releasing.md.
 

@@ -4,6 +4,34 @@ Command-line client of the Almena ID platform. The binary is `almena`.
 
 ## Install
 
+With [Homebrew](https://brew.sh), on macOS (Apple silicon) or Linux (x86_64):
+
+```bash
+brew install almena-id/tap/almena
+```
+
+It installs the shell completions for bash, zsh and fish as well, and
+`brew upgrade` brings the newest version distributed.
+
+With [winget](https://learn.microsoft.com/windows/package-manager/), on
+Windows (x86_64):
+
+```powershell
+winget install AlmenaID.Almena
+```
+
+`winget upgrade AlmenaID.Almena` brings the newest version distributed, once
+Microsoft has merged it into its catalogue. Or with [Scoop](https://scoop.sh):
+
+```powershell
+scoop bucket add almena https://github.com/almena-id/scoop-bucket
+scoop install almena/almena
+```
+
+`scoop update almena` brings the newest version distributed. For tab
+completion in PowerShell, add this line to your `$PROFILE`:
+`almena completions powershell | Out-String | Invoke-Expression`.
+
 Every merge into `main` publishes a [release](https://github.com/almena-id/almena/releases)
 with prebuilt binaries for Linux (x86_64, Ubuntu 24.04 or later), macOS (Apple
 silicon) and Windows (x86_64), plus `SHA256SUMS`. Versions are

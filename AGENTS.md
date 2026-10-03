@@ -16,6 +16,8 @@
 - `tests/cli.rs` — the binary against a stand-in API (`wiremock`): what each command sends and prints.
 
 - `.github/workflows/release.yml` — on every push to `main`: lint and test, build the binary for Linux, macOS (Developer ID, notarized) and Windows (Authenticode, Azure Trusted Signing), sign `SHA256SUMS` with the release OpenPGP key, and publish a GitHub release tagged `v<year>.<month>.<n>`. The version is compiled in through `ALMENA_VERSION` (`cli::VERSION`); without it, builds report Cargo.toml's version.
+- `.github/workflows/distribute.yml` — run by hand: takes a published release (empty: the latest) and the channels to update. It moves the Homebrew formula in `almena-id/homebrew-tap` and the Scoop manifest in `almena-id/scoop-bucket` to it, each after installing it from a local copy of its repository, and opens a pull request for `AlmenaID.Almena` in `microsoft/winget-pkgs`. Checksums come from the release's `SHA256SUMS`; nothing is rebuilt.
+- `packaging/` — the templates of those: `homebrew/almena.rb`, `scoop/almena.json` and the three manifests in `winget/`; the workflow fills in `@VERSION@` and the archives' checksums, reading them as they were at the release's tag.
 
 ## Adding a subcommand
 

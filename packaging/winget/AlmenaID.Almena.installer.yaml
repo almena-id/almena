@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
+
+PackageIdentifier: AlmenaID.Almena
+PackageVersion: "@VERSION@"
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: almena-@VERSION@-x86_64-pc-windows-msvc\almena.exe
+    PortableCommandAlias: almena
+Commands:
+  - almena
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/almena-id/almena/releases/download/v@VERSION@/almena-@VERSION@-x86_64-pc-windows-msvc.zip
+    InstallerSha256: "@SHA256_X86_64_PC_WINDOWS_MSVC@"
+ManifestType: installer
+ManifestVersion: 1.12.0

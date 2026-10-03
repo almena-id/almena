@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
+
+PackageIdentifier: AlmenaID.Almena
+PackageVersion: "@VERSION@"
+PackageLocale: en-US
+Publisher: Almena ID
+PublisherUrl: https://almena.id
+PublisherSupportUrl: https://github.com/almena-id/almena/issues
+PackageName: almena
+PackageUrl: https://github.com/almena-id/almena
+License: Apache-2.0
+LicenseUrl: https://github.com/almena-id/almena/blob/main/LICENSE
+ShortDescription: Command-line client of the Almena ID platform
+Moniker: almena
+Tags:
+  - cli
+  - decentralized-identity
+  - self-sovereign-identity
+  - verifiable-credentials
+ReleaseNotesUrl: https://github.com/almena-id/almena/releases/tag/v@VERSION@
+ManifestType: defaultLocale
+ManifestVersion: 1.12.0

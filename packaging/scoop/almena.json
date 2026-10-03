@@ -1,0 +1,18 @@
+{
+  "version": "@VERSION@",
+  "description": "Command-line client of the Almena ID platform",
+  "homepage": "https://github.com/almena-id/almena",
+  "license": "Apache-2.0",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/almena-id/almena/releases/download/v@VERSION@/almena-@VERSION@-x86_64-pc-windows-msvc.zip",
+      "hash": "@SHA256_X86_64_PC_WINDOWS_MSVC@",
+      "extract_dir": "almena-@VERSION@-x86_64-pc-windows-msvc"
+    }
+  },
+  "bin": "almena.exe",
+  "notes": [
+    "Tab completion in PowerShell: add this line to your $PROFILE",
+    "  almena completions powershell | Out-String | Invoke-Expression"
+  ]
+}

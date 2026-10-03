@@ -1,0 +1,240 @@
+# Puts a published release of almena into the package managers. It is run by
+# hand (Actions → Distribute → Run workflow): release.yml builds and publishes
+# on every merge, and this decides which of those releases reach users through
+# Homebrew, Scoop and winget.
+#
+# It takes the version of a release already on GitHub (empty: the latest) and
+# which channels to update. Nothing is built here: each channel points at the
+# release's archives, with the checksums from its SHA256SUMS, and the
+# templates in packaging/ are read as they were at that release's tag.
+#
+#   Homebrew  Formula/almena.rb in almena-id/homebrew-tap, from
+#             packaging/homebrew/almena.rb. Installed and tested from a local
+#             copy of the tap before it is pushed, so the tap never points at
+#             something that does not install. HOMEBREW_TAP_TOKEN: a
+#             fine-grained token limited to almena-id/homebrew-tap with
+#             Contents read and write.
+#   Scoop     bucket/almena.json in almena-id/scoop-bucket, from
+#             packaging/scoop/almena.json, the same way. SCOOP_BUCKET_TOKEN:
+#             the same kind of token, limited to almena-id/scoop-bucket.
+#   winget    a pull request to microsoft/winget-pkgs with packaging/winget/
+#             filled in (package AlmenaID.Almena), which Microsoft validates,
+#             installs in a sandbox and merges. WINGET_TOKEN: a classic token
+#             with the public_repo scope of the account that holds the fork of
+#             winget-pkgs the pull requests come from.
+
+name: Distribute
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release to distribute (e.g. 2026.10.1); empty for the latest
+        type: string
+        required: false
+      homebrew:
+        description: Homebrew tap
+        type: boolean
+        default: true
+      scoop:
+        description: Scoop bucket
+        type: boolean
+        default: true
+      winget:
+        description: winget
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: distribute
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Find the release
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.find.outputs.version }}
+    steps:
+      - name: Its version
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          if [ -n "$REQUESTED" ]; then
+            tag="v${REQUESTED#v}"
+          else
+            tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          fi
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "Distributing ${tag#v}"
+
+  homebrew:
+    name: Homebrew tap
+    needs: release
+    if: inputs.homebrew
+    runs-on: macos-15
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ needs.release.outputs.version }}
+          sparse-checkout: packaging/homebrew
+
+      - uses: actions/checkout@v7
+        with:
+          repository: almena-id/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Fill in the formula
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir "$RUNNER_TEMP"
+          checksum() { awk -v file="almena-$VERSION-$1" '$2 == file { print $1 }' "$RUNNER_TEMP/SHA256SUMS"; }
+          darwin=$(checksum aarch64-apple-darwin.tar.gz)
+          linux=$(checksum x86_64-unknown-linux-gnu.tar.gz)
+          test -n "$darwin" && test -n "$linux"
+          mkdir -p tap/Formula
+          # The template's header comment (up to the first blank line) stays out.
+          sed -e '1,/^$/d' \
+              -e "s/@VERSION@/$VERSION/g" \
+              -e "s/@SHA256_AARCH64_APPLE_DARWIN@/$darwin/" \
+              -e "s/@SHA256_X86_64_UNKNOWN_LINUX_GNU@/$linux/" \
+              packaging/homebrew/almena.rb > tap/Formula/almena.rb
+          if grep -n '@[A-Z0-9_]*@' tap/Formula/almena.rb; then exit 1; fi
+          cat tap/Formula/almena.rb
+
+      - name: Commit it to the tap
+        working-directory: tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/almena.rb
+          git commit -m "almena $VERSION"
+
+      - name: Install and test it from the local copy
+        run: |
+          brew tap almena-id/tap "$GITHUB_WORKSPACE/tap"
+          brew style almena-id/tap/almena
+          brew audit almena-id/tap/almena
+          brew install almena-id/tap/almena
+          brew test almena-id/tap/almena
+          test "$(almena --version)" = "almena $VERSION"
+
+      - name: Push it
+        working-directory: tap
+        run: git push origin HEAD
+
+  scoop:
+    name: Scoop bucket
+    needs: release
+    if: inputs.scoop
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ needs.release.outputs.version }}
+          sparse-checkout: packaging/scoop
+
+      - uses: actions/checkout@v7
+        with:
+          repository: almena-id/scoop-bucket
+          token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          path: bucket
+
+      - name: Fill in the manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir "$RUNNER_TEMP"
+          windows=$(awk -v file="almena-$VERSION-x86_64-pc-windows-msvc.zip" '$2 == file { print $1 }' "$RUNNER_TEMP/SHA256SUMS")
+          test -n "$windows"
+          mkdir -p bucket/bucket
+          sed -e "s/@VERSION@/$VERSION/g" \
+              -e "s/@SHA256_X86_64_PC_WINDOWS_MSVC@/$windows/" \
+              packaging/scoop/almena.json > bucket/bucket/almena.json
+          if grep -n '@[A-Z0-9_]*@' bucket/bucket/almena.json; then exit 1; fi
+          jq . bucket/bucket/almena.json
+
+      - name: Commit it to the bucket
+        working-directory: bucket
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bucket/almena.json
+          git commit -m "almena $VERSION"
+
+      - name: Install and test it from the local copy
+        shell: pwsh
+        run: |
+          Invoke-Expression "& {$(Invoke-RestMethod https://get.scoop.sh)} -RunAsAdmin"
+          scoop bucket add almena "$env:GITHUB_WORKSPACE\bucket"
+          scoop install almena/almena
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $reported = almena --version
+          $reported
+          if ($reported -ne "almena $env:VERSION") { exit 1 }
+
+      - name: Push it
+        working-directory: bucket
+        run: git push origin HEAD
+
+  winget:
+    name: winget
+    needs: release
+    if: inputs.winget
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+      MANIFESTS: manifests/a/AlmenaID/Almena/${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ needs.release.outputs.version }}
+          sparse-checkout: packaging/winget
+
+      - name: Fill in the manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir "$RUNNER_TEMP"
+          windows=$(awk -v file="almena-$VERSION-x86_64-pc-windows-msvc.zip" '$2 == file { print toupper($1) }' "$RUNNER_TEMP/SHA256SUMS")
+          test -n "$windows"
+          mkdir -p "$MANIFESTS"
+          for template in packaging/winget/*.yaml; do
+            sed -e "s/@VERSION@/$VERSION/g" \
+                -e "s/@SHA256_X86_64_PC_WINDOWS_MSVC@/$windows/" \
+                "$template" > "$MANIFESTS/$(basename "$template")"
+          done
+          if grep -n '@[A-Z0-9_]*@' "$MANIFESTS"/*.yaml; then exit 1; fi
+          tail -n +1 "$MANIFESTS"/*.yaml
+
+      - name: Open the pull request in winget-pkgs
+        # wingetcreate validates the manifests, forks winget-pkgs into the
+        # token's account and opens the pull request from there.
+        shell: pwsh
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile "$env:RUNNER_TEMP\wingetcreate.exe"
+          & "$env:RUNNER_TEMP\wingetcreate.exe" submit --no-open `
+            --prtitle "New version: AlmenaID.Almena version $env:VERSION" $env:MANIFESTS
+          if ($LASTEXITCODE -ne 0) { exit 1 }
