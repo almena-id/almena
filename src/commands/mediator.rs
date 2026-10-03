@@ -39,9 +39,12 @@ pub enum MediatorCommand {
         /// Its new name.
         #[arg(long)]
         name: Option<String>,
-        /// Its new address.
-        #[arg(long)]
-        url: Option<String>,
+        /// Move it to this subdomain (`relay`, `eu.relay`) of --domain.
+        #[arg(long, requires = "domain")]
+        subdomain: Option<String>,
+        /// The verified domain it moves under, by id (see `almena domain list`).
+        #[arg(long, requires = "subdomain")]
+        domain: Option<String>,
         /// Offer it to every tenant (true) or not (false).
         #[arg(long, action = ArgAction::Set, value_name = "BOOL")]
         public: Option<bool>,
@@ -101,21 +104,25 @@ pub fn run(ctx: &Context, command: MediatorCommand) -> anyhow::Result<()> {
         MediatorCommand::Update {
             id,
             name,
-            url,
+            subdomain,
+            domain,
             public,
         } => {
             let mut body = Map::new();
             if let Some(name) = name {
                 body.insert("name".into(), json!(name));
             }
-            if let Some(url) = url {
-                body.insert("url".into(), json!(url));
+            if let (Some(subdomain), Some(domain)) = (subdomain, domain) {
+                body.insert("subdomain".into(), json!(subdomain));
+                body.insert("domain_id".into(), json!(domain));
             }
             if let Some(public) = public {
                 body.insert("public".into(), json!(public));
             }
             if body.is_empty() {
-                anyhow::bail!("nothing to change: pass --name, --url or --public");
+                anyhow::bail!(
+                    "nothing to change: pass --name, --subdomain with --domain, or --public"
+                );
             }
             show(
                 ctx.out,

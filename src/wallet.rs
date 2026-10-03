@@ -17,7 +17,7 @@ use crate::output::notice;
 /// Who asks: the wallet answers the CLI, and its sheet says so.
 pub const CLIENT: &str = "cli";
 
-const POLL_EVERY: Duration = Duration::from_secs(2);
+pub const POLL_EVERY: Duration = Duration::from_secs(2);
 
 /// The body of a request for the wallet to sign: the language of its sheet,
 /// and that the CLI asks.
@@ -59,7 +59,8 @@ pub fn wait(api: &Client, request: &Value, what: &str) -> anyhow::Result<Value> 
     }
 }
 
-fn show(link: &str, what: &str) {
+/// The link as a QR code and as text, and that it is being waited for.
+pub fn show(link: &str, what: &str) {
     notice(format!("Scan with your Almena wallet to {what}:\n"));
     if let Ok(code) = QrCode::new(link.as_bytes()) {
         let image = code

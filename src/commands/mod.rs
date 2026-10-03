@@ -79,10 +79,21 @@ pub struct PageArgs {
 /// A paged list (`{items, next_cursor}`): its items, every page's with `--all`.
 /// With one page, says how to get the next.
 pub fn paged(api: &Client, segments: &[&str], page: &PageArgs) -> anyhow::Result<Value> {
+    paged_with(api, segments, page, &[])
+}
+
+/// [`paged`], with more query parameters (filters) on every page.
+pub fn paged_with(
+    api: &Client,
+    segments: &[&str],
+    page: &PageArgs,
+    filters: &[(&str, String)],
+) -> anyhow::Result<Value> {
     let mut items = Vec::new();
     let mut cursor = page.cursor.clone();
     loop {
         let mut query = vec![("limit", page.limit.to_string())];
+        query.extend(filters.iter().cloned());
         if let Some(cursor) = &cursor {
             query.push(("cursor", cursor.clone()));
         }

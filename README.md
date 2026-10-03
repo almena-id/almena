@@ -95,7 +95,10 @@ and `create`, `update <id>`, `delete <id>` (which asks first, unless `--yes`).
 | `almena issuer list \| get \| create \| update \| delete` | The tenant's issuers (`verifier` the same, for verifiers) |
 | `almena issuer publish \| unpublish <id>` | Publish (endorsed from the wallet), or back to a draft |
 | `almena issuer signing get \| set <id>` | The member whose wallet signs for it |
+| `almena verifier verify <id> --form <form-id>` | Ask a wallet, by QR in the terminal, to present what the form asks for as that verifier (published); waits and shows the verdict |
+| `almena issuer queue get \| create \| rotate \| delete <id>` | Its queue at the broker, where its back office reads what happens to it (`verifier` the same); `create` and `rotate` print the user's password, once |
 | `almena issuer credential-types get \| set <id>` | The credential types it grants, and the form of each offer |
+| `almena issuer status-list list \| sign <id>` | Its status lists (entries used, revoked, suspended, whether to sign), and signing one from the wallet (`--status-list`; the current one by default) |
 | `almena mediator list \| get \| create \| update \| delete \| publish \| unpublish` | The tenant's mediators |
 | `almena mediator choices` | The mediators the tenant, its issuers and verifiers may pick |
 | `almena identity list \| get \| create \| sign <id>` | The tenant's identities; sign an identity's next DID log entry |
@@ -105,10 +108,11 @@ and `create`, `update <id>`, `delete <id>` (which asks first, unless `--yes`).
 | `almena form list \| get \| create` | The tenant's forms (from flags, or `--file` with the API's body) |
 | `almena form schema \| dcql \| verify <id>` | Its answers' JSON Schema, its DCQL query; verify presented credentials |
 | `almena field list \| create \| delete` | The tenant's own fields (`custom:{key}` in forms) |
-| `almena catalog fields \| credentials \| issuers \| verifiers \| mediators` | Almena's public catalogues and what is published (no sign-in) |
+| `almena catalog fields \| credentials \| issuers \| verifiers \| mediators \| offers` | Almena's public catalogues and what is published (no sign-in); `issuers --search <text> --grants <type>` narrows them |
 | `almena catalog offer <issuer-slug> <type>` | An issuer's offer |
 | `almena application list \| get \| file \| decide` | Applications the tenant's issuers received; accept or reject one |
 | `almena issuance get \| set \| sign <application>` | Settle an accepted application's credential and sign it from the wallet |
+| `almena application credential-status <id> valid\|suspended\|revoked` | Suspend, reinstate or revoke an issued credential: the issuer's signer signs its status list from the wallet; revoking asks first |
 | `almena agent card \| ask \| chat` | Talk to the Almena agent (A2A); `ask` streams the answer |
 | `almena config show \| set \| unset \| path` | The profile's settings |
 | `almena completions <shell>` | Print the completion script for bash, zsh, fish, elvish or PowerShell |

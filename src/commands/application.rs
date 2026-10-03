@@ -1,5 +1,5 @@
-//! `almena application`: the applications the tenant's issuers received, and
-//! deciding on them.
+//! `almena application`: the applications the tenant's issuers received,
+//! deciding on them, and the status of the credentials they were issued.
 
 use std::fs;
 use std::path::PathBuf;
@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 
 use crate::context::Context;
 use crate::output::{Output, col, notice};
+use crate::wallet;
 
 #[derive(Debug, Subcommand)]
 pub enum ApplicationCommand {
@@ -45,6 +46,35 @@ pub enum ApplicationCommand {
         #[arg(long)]
         note: Option<String>,
     },
+    /// Give an issued credential a new status (the issuer's signer signs its status list
+    /// from their wallet); revoking is final.
+    CredentialStatus {
+        /// Its id.
+        id: String,
+        /// The new status.
+        #[arg(value_enum)]
+        status: CredentialStatus,
+    },
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum CredentialStatus {
+    /// Valid again, after a suspension.
+    Valid,
+    /// Refused by verifiers until it is valid again.
+    Suspended,
+    /// Refused by verifiers for good.
+    Revoked,
+}
+
+impl CredentialStatus {
+    fn api(self) -> &'static str {
+        match self {
+            Self::Valid => "valid",
+            Self::Suspended => "suspended",
+            Self::Revoked => "revoked",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -81,6 +111,7 @@ pub fn run(ctx: &Context, command: ApplicationCommand) -> anyhow::Result<()> {
                     col("Credential", "credential_type"),
                     col("Form", "form"),
                     col("Submitted", "submitted_at"),
+                    col("Credential status", "credential_status"),
                 ],
             );
         }
@@ -109,6 +140,25 @@ pub fn run(ctx: &Context, command: ApplicationCommand) -> anyhow::Result<()> {
                 ));
             }
         }
+        ApplicationCommand::CredentialStatus { id, status } => {
+            if matches!(status, CredentialStatus::Revoked) {
+                ctx.confirm(&format!(
+                    "Revoke the credential of application {id}? Verifiers will refuse it for good."
+                ))?;
+            }
+            let mut body = wallet::asking(ctx.locale());
+            body["status"] = json!(status.api());
+            let request = api.post(
+                &["tenants", &tenant, "applications", &id, "credential-status"],
+                &body,
+            )?;
+            wallet::wait(&api, &request, "sign the issuer's status list")?;
+            notice(format!("The credential is {} now.", status.api()));
+            show(
+                ctx.out,
+                &api.get(&["tenants", &tenant, "applications", &id])?,
+            );
+        }
     }
     Ok(())
 }
@@ -132,6 +182,9 @@ fn show(out: Output, application: &Value) {
             col("Issued", "issued_at"),
             col("Valid until", "valid_until"),
             col("Delivered", "delivered_at"),
+            col("Credential status", "credential_status"),
+            col("Status list", "status_list.uri"),
+            col("Entry", "status_list.index"),
         ],
     );
     if let Some(answers) = application["content"]["answers"]

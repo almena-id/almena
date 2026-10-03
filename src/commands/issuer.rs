@@ -1,11 +1,13 @@
-//! `almena issuer`: the tenant's issuers, and the credential types they grant.
+//! `almena issuer`: the tenant's issuers, the credential types they grant, and
+//! their status lists.
 
 use clap::Subcommand;
 use serde_json::{Map, Value, json};
 
 use crate::commands::described::{self, DescribedCommand, Kind};
 use crate::context::Context;
-use crate::output::{Output, notice};
+use crate::output::{Output, col, notice};
+use crate::wallet;
 
 #[derive(Debug, Subcommand)]
 pub enum IssuerCommand {
@@ -14,6 +16,27 @@ pub enum IssuerCommand {
     /// The credential types it grants, and the form each is applied for with.
     #[command(subcommand)]
     CredentialTypes(CredentialTypesCommand),
+    /// Its status lists: where verifiers check whether its credentials still hold.
+    #[command(subcommand)]
+    StatusList(StatusListCommand),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum StatusListCommand {
+    /// List its status lists: entries taken, revoked, suspended, and whether each must be signed.
+    List {
+        /// The issuer's id.
+        id: String,
+    },
+    /// Sign a status list as it is from your wallet (the issuer's signer): before its first
+    /// credential, or after the key it was signed with left the issuer's DID.
+    Sign {
+        /// The issuer's id.
+        id: String,
+        /// The list to sign [default: its current one, made if it has none].
+        #[arg(long, value_name = "ID")]
+        status_list: Option<String>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -69,6 +92,65 @@ pub fn run(ctx: &Context, command: IssuerCommand) -> anyhow::Result<()> {
             }
             Ok(())
         }
+        IssuerCommand::StatusList(command) => {
+            let api = ctx.api()?;
+            let tenant = ctx.tenant(&api)?;
+            match command {
+                StatusListCommand::List { id } => {
+                    let lists = api.get(&["tenants", &tenant, "issuers", &id, "status-lists"])?;
+                    show_lists(ctx.out, &lists);
+                }
+                StatusListCommand::Sign { id, status_list } => {
+                    let mut body = wallet::asking(ctx.locale());
+                    if let Some(list) = status_list {
+                        body["status_list_id"] = json!(list);
+                    }
+                    let request = api.post(
+                        &["tenants", &tenant, "issuers", &id, "status-lists", "sign"],
+                        &body,
+                    )?;
+                    wallet::wait(&api, &request, "sign the status list")?;
+                    notice("Signed: verifiers read it at its address.");
+                    let lists = api.get(&["tenants", &tenant, "issuers", &id, "status-lists"])?;
+                    show_lists(ctx.out, &lists);
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+fn show_lists(out: Output, lists: &Value) {
+    if out.is_json() {
+        return out.document(lists);
+    }
+    let items = lists["items"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    if items.is_empty() {
+        notice("No status list yet: its signer signs one before its first credential.");
+    } else {
+        out.list(
+            &lists["items"],
+            &[
+                col("ID", "id"),
+                col("Address", "uri"),
+                col("Used", "used"),
+                col("Size", "size"),
+                col("Revoked", "revoked"),
+                col("Suspended", "suspended"),
+                col("Signed", "signed_at"),
+                col("To sign", "needs_signing"),
+            ],
+        );
+    }
+    if lists["can_sign"] != json!(true) {
+        notice(if lists["signer_needed"] == json!(true) {
+            "The issuer has no signer: name one with `almena issuer signing set`."
+        } else {
+            "Only the issuer's signer signs its status lists."
+        });
     }
 }
 
@@ -93,9 +175,6 @@ fn show_types(out: Output, types: &Value) {
         .collect();
     out.list(
         &Value::Array(rows),
-        &[
-            crate::output::col("Type", "type"),
-            crate::output::col("Form (offer)", "form"),
-        ],
+        &[col("Type", "type"), col("Form (offer)", "form")],
     );
 }

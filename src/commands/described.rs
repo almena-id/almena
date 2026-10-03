@@ -78,6 +78,33 @@ pub enum DescribedCommand {
     /// How it signs: the member whose wallet signs for it.
     #[command(subcommand)]
     Signing(SigningCommand),
+    /// Its queue at the broker: where its back office reads what happens to it.
+    #[command(subcommand)]
+    Queue(QueueCommand),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum QueueCommand {
+    /// Show whether it has one, and how its back office connects.
+    Get {
+        /// Its id.
+        id: String,
+    },
+    /// Make it and the user that reads it (admins); prints the password, once.
+    Create {
+        /// Its id.
+        id: String,
+    },
+    /// Give its user a new password (admins); the old one stops working.
+    Rotate {
+        /// Its id.
+        id: String,
+    },
+    /// Delete it, with every message still in it, and its user (admins).
+    Delete {
+        /// Its id.
+        id: String,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -180,6 +207,7 @@ pub fn run(ctx: &Context, kind: Kind, command: DescribedCommand) -> anyhow::Resu
             let signing = api.get(&["tenants", &tenant, collection, &id, "signing"])?;
             show_signing(ctx.out, &signing);
         }
+        DescribedCommand::Queue(command) => queue(ctx, &api, &tenant, collection, command)?,
         DescribedCommand::Signing(SigningCommand::Set { id, user, .. }) => {
             let body = match user {
                 Some(user) => json!({"system": "single_user", "user_id": user}),
@@ -214,6 +242,56 @@ pub fn show(out: Output, item: &Value) {
             col("Published", "published_at"),
             col("Endorsed until", "endorsed_until"),
             col("Document", "document_url"),
+            col("Created", "created_at"),
+        ],
+    );
+}
+
+fn queue(
+    ctx: &Context,
+    api: &Client,
+    tenant: &str,
+    collection: &str,
+    command: QueueCommand,
+) -> anyhow::Result<()> {
+    match command {
+        QueueCommand::Get { id } => {
+            show_queue(
+                ctx.out,
+                &api.get(&["tenants", tenant, collection, &id, "queue"])?,
+            );
+        }
+        QueueCommand::Create { id } => {
+            let made = api.post(&["tenants", tenant, collection, &id, "queue"], &json!({}))?;
+            show_queue(ctx.out, &made);
+            notice("The password is shown this once: the registry does not keep it.");
+        }
+        QueueCommand::Rotate { id } => {
+            let rotated = api.post(
+                &["tenants", tenant, collection, &id, "queue", "access"],
+                &json!({}),
+            )?;
+            show_queue(ctx.out, &rotated);
+            notice("The old password no longer works; this one is shown this once.");
+        }
+        QueueCommand::Delete { id } => {
+            ctx.confirm("Delete the queue, with every message still in it, and its user?")?;
+            api.delete(&["tenants", tenant, collection, &id, "queue"])?;
+            notice("Deleted.");
+        }
+    }
+    Ok(())
+}
+
+fn show_queue(out: Output, queue: &Value) {
+    out.item(
+        queue,
+        &[
+            col("Queue", "queue"),
+            col("User", "user"),
+            col("Password", "password"),
+            col("Address", "amqp_url"),
+            col("Virtual host", "vhost"),
             col("Created", "created_at"),
         ],
     );

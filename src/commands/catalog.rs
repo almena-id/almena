@@ -3,7 +3,7 @@
 
 use clap::Subcommand;
 
-use crate::commands::{PageArgs, paged};
+use crate::commands::{PageArgs, paged, paged_with};
 use crate::context::Context;
 use crate::output::{Column, col};
 
@@ -14,11 +14,22 @@ pub enum CatalogCommand {
     /// Almena's credential types: what issuers grant and forms ask for.
     Credentials,
     /// Published issuers, newest first.
-    Issuers(PageArgs),
+    Issuers {
+        #[command(flatten)]
+        page: PageArgs,
+        /// Only those whose name (any case) or DID has this in it.
+        #[arg(long, value_name = "TEXT")]
+        search: Option<String>,
+        /// Only those that grant this credential type.
+        #[arg(long, value_name = "TYPE")]
+        grants: Option<String>,
+    },
     /// Published verifiers, newest first.
     Verifiers(PageArgs),
     /// Published mediators, newest first.
     Mediators(PageArgs),
+    /// Every published issuer's offers: a credential type it grants on request.
+    Offers(PageArgs),
     /// An issuer's offer: the credential type and the form to apply with.
     Offer {
         /// The issuer's slug (`iss_…`).
@@ -72,8 +83,16 @@ pub fn run(ctx: &Context, command: CatalogCommand) -> anyhow::Result<()> {
                 ],
             );
         }
-        CatalogCommand::Issuers(page) => {
-            let items = paged(&api, &["catalog", "issuers"], &page)?;
+        CatalogCommand::Issuers {
+            page,
+            search,
+            grants,
+        } => {
+            let filters: Vec<(&str, String)> = [("q", search), ("grants", grants)]
+                .into_iter()
+                .filter_map(|(name, value)| value.map(|value| (name, value)))
+                .collect();
+            let items = paged_with(&api, &["catalog", "issuers"], &page, &filters)?;
             ctx.out.list(
                 &items,
                 &[
@@ -99,6 +118,19 @@ pub fn run(ctx: &Context, command: CatalogCommand) -> anyhow::Result<()> {
                     col("URL", "url"),
                     col("DID", "did"),
                     col("Tenant", "tenant.name"),
+                ],
+            );
+        }
+        CatalogCommand::Offers(page) => {
+            let items = paged(&api, &["catalog", "offers"], &page)?;
+            ctx.out.list(
+                &items,
+                &[
+                    col("Issuer", "issuer.slug"),
+                    col("Name", "issuer.name"),
+                    col("Type", "credential_type.id"),
+                    col("Label", "credential_type.labels"),
+                    col("Category", "credential_type.category.id"),
                 ],
             );
         }

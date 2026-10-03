@@ -81,17 +81,17 @@ impl Env {
 
     /// A wallet request the API makes, already answered with `status`.
     async fn wallet(&self, made_by: &str, status: &str) {
+        self.wallet_sent(made_by, json!({"locale": "en", "client": "cli"}), status)
+            .await;
+    }
+
+    /// As `wallet`, for a request made with more than the locale and client.
+    async fn wallet_sent(&self, made_by: &str, sent: Value, status: &str) {
         let request = json!({
             "id": "r1", "request_uri": "u", "poll": "p1",
             "deep_link": "almena://auth?request_uri=u", "expires_at": "2026-10-03T00:00:00Z",
         });
-        self.expect(
-            "POST",
-            made_by,
-            json!({"locale": "en", "client": "cli"}),
-            request,
-        )
-        .await;
+        self.expect("POST", made_by, sent, request).await;
         self.expect(
             "POST",
             "/api/v1/auth/wallet/requests/r1/result",
@@ -550,6 +550,84 @@ async fn unpublishing_and_signing_systems() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_verifier_asks_by_qr_and_shows_the_verdict() {
+    let env = Env::new().await;
+    env.expect(
+        "POST",
+        &tenant("/verifiers/v1/verifications"),
+        json!({"form_id": "f1"}),
+        json!({
+            "id": "x1", "status": "pending", "deep_link": "almena://auth?request_uri=r",
+            "verifier": {"id": "v1", "name": "Door", "did": "did:web:door"},
+        }),
+    )
+    .await;
+    env.on(
+        "GET",
+        &tenant("/verifiers/v1/verifications/x1"),
+        json!({
+            "id": "x1", "status": "answered",
+            "result": {"verified": true, "credentials": [
+                {"key": "membership", "verified": true, "issuer": "did:web:club",
+                 "problems": [], "claims": {"member_number": "0042"}}
+            ]},
+        }),
+    )
+    .await;
+    env.cmd()
+        .args(["verifier", "verify", "v1", "--form", "f1"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("membership").and(predicate::str::contains("did:web:club")),
+        )
+        .stderr(predicate::str::contains("Verified"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn queues_are_made_rotated_and_deleted() {
+    let env = Env::new().await;
+    let made = json!({
+        "queue": "subject.iss_a", "user": "iss_a", "password": "s3cret",
+        "amqp_url": "amqps://broker.almena.id:5671", "vhost": "almena", "created_at": "2026-10-03T00:00:00Z",
+    });
+    env.expect("POST", &tenant("/issuers/i1/queue"), json!({}), made)
+        .await;
+    env.cmd()
+        .args(["issuer", "queue", "create", "i1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("s3cret").and(predicate::str::contains("subject.iss_a")));
+    env.expect(
+        "POST",
+        &tenant("/verifiers/v1/queue/access"),
+        json!({}),
+        json!({"queue": "subject.ver_b", "user": "ver_b", "password": "n3w"}),
+    )
+    .await;
+    env.cmd()
+        .args(["verifier", "queue", "rotate", "v1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("n3w"));
+    env.cmd()
+        .args(["issuer", "queue", "delete", "i1"])
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("--yes"));
+    Mock::given(method("DELETE"))
+        .and(path(tenant("/issuers/i1/queue")))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&env.server)
+        .await;
+    env.cmd()
+        .args(["--yes", "issuer", "queue", "delete", "i1"])
+        .assert()
+        .success();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn credential_types_map_to_forms() {
     let env = Env::new().await;
     env.expect(
@@ -607,6 +685,30 @@ async fn mediators_are_registered_and_changed() {
         .args(["mediator", "update", "m1", "--public", "false"])
         .assert()
         .success();
+    env.expect(
+        "PATCH",
+        &tenant("/mediators/m2"),
+        json!({"subdomain": "eu.relay", "domain_id": "d1"}),
+        json!({"id": "m2"}),
+    )
+    .await;
+    env.cmd()
+        .args([
+            "mediator",
+            "update",
+            "m2",
+            "--subdomain",
+            "eu.relay",
+            "--domain",
+            "d1",
+        ])
+        .assert()
+        .success();
+    // An address moves whole: a subdomain under a domain.
+    env.cmd()
+        .args(["mediator", "update", "m2", "--subdomain", "eu.relay"])
+        .assert()
+        .failure();
     env.on(
         "GET",
         &tenant("/mediator-choices"),
@@ -838,6 +940,47 @@ async fn the_catalogue_needs_no_sign_in() {
         .args(["catalog", "offer", "iss_x", "enrollment"])
         .assert()
         .success();
+    Mock::given(method("GET"))
+        .and(path("/api/v1/catalog/issuers"))
+        .and(query_param("q", "gym"))
+        .and(query_param("grants", "membership"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "items": [{"slug": "iss_g", "name": "North Gym", "did": "did:web:x"}],
+            "next_cursor": null,
+        })))
+        .expect(1)
+        .mount(&env.server)
+        .await;
+    env.cmd()
+        .args([
+            "catalog",
+            "issuers",
+            "--search",
+            "gym",
+            "--grants",
+            "membership",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("North Gym"));
+    let offers = json!({
+        "items": [{
+            "issuer": {"slug": "iss_x", "name": "Uni", "description": null, "did": "did:web:x"},
+            "credential_type": {
+                "id": "enrollment",
+                "labels": {"en": "Enrollment", "es": "Matrícula"},
+                "descriptions": {},
+                "category": {"id": "education", "labels": {}},
+            },
+        }],
+        "next_cursor": null,
+    });
+    env.on("GET", "/api/v1/catalog/offers", offers).await;
+    env.cmd()
+        .args(["--locale", "es", "catalog", "offers"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Matrícula").and(predicate::str::contains("iss_x")));
 }
 
 // --- applications and issuance ----------------------------------------------
@@ -946,6 +1089,62 @@ async fn issuance_settles_the_proposal_with_changes() {
         .assert()
         .success()
         .stdout(predicate::str::contains("issued"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_issuers_status_list_is_listed_and_signed() {
+    let env = Env::new().await;
+    let lists = json!({
+        "items": [{"id": "l1", "uri": "https://api.almena.id/status-lists/stl_1",
+                   "used": 3, "size": 131072, "revoked": 1, "suspended": 0,
+                   "signed_at": null, "needs_signing": true}],
+        "can_sign": true, "signer_needed": false,
+    });
+    env.on("GET", &tenant("/issuers/i1/status-lists"), lists)
+        .await;
+    env.cmd()
+        .args(["issuer", "status-list", "list", "i1"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("stl_1"));
+    env.wallet_sent(
+        &tenant("/issuers/i1/status-lists/sign"),
+        json!({"locale": "en", "client": "cli", "status_list_id": "l1"}),
+        "signed",
+    )
+    .await;
+    env.cmd()
+        .args(["issuer", "status-list", "sign", "i1", "--status-list", "l1"])
+        .assert()
+        .success();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_credential_is_suspended_and_revoked_only_when_confirmed() {
+    let env = Env::new().await;
+    env.on(
+        "GET",
+        &tenant("/applications/a1"),
+        json!({"id": "a1", "status": "issued", "credential_status": "suspended"}),
+    )
+    .await;
+    env.wallet_sent(
+        &tenant("/applications/a1/credential-status"),
+        json!({"locale": "en", "client": "cli", "status": "suspended"}),
+        "signed",
+    )
+    .await;
+    env.cmd()
+        .args(["application", "credential-status", "a1", "suspended"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("suspended"));
+    // Revoking is final: not without a yes.
+    env.cmd()
+        .args(["application", "credential-status", "a1", "revoked"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--yes"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
