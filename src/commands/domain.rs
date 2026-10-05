@@ -15,7 +15,8 @@ pub enum DomainCommand {
         /// The domain (`acme.com`; a URL is taken down to its host).
         domain: String,
     },
-    /// Look for its TXT record; found, the domain is verified (admins).
+    /// Look for its TXT record (admins): found, the domain is verified; gone, a
+    /// verified one stops being verified and leaves the DID document.
     Check {
         /// The domain's id.
         id: String,
