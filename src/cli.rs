@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::commands::{
     account, agent, application, auth, catalog, category, config, credential_type, domain, field,
-    form, identity, issuance, issuer, mediator, member, signature, subscription, tenant, token,
+    form, identity, issuance, issuer, mediator, member, pending, subscription, tenant, token,
     value_domain, verifier,
 };
 
@@ -117,9 +117,9 @@ pub enum Command {
     /// The tenant's identities (its register of DIDs).
     #[command(subcommand)]
     Identity(identity::IdentityCommand),
-    /// Identities whose DID waits for a signature.
+    /// What waits in the tenant to be signed or published.
     #[command(subcommand)]
-    Signature(signature::SignatureCommand),
+    Pending(pending::PendingCommand),
     /// The tenant's linked domains.
     #[command(subcommand)]
     Domain(domain::DomainCommand),

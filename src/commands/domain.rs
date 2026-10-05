@@ -62,7 +62,7 @@ pub fn run(ctx: &Context, command: DomainCommand) -> anyhow::Result<()> {
             show(ctx.out, &checked);
             if checked["verified"] == true {
                 notice(
-                    "Verified. The tenant's DID document names it now: sign it (`almena signature list`).",
+                    "Verified. The tenant's DID document names it now: sign it (`almena pending list`).",
                 );
             }
         }

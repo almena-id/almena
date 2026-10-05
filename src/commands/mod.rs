@@ -19,7 +19,7 @@ pub mod issuance;
 pub mod issuer;
 pub mod mediator;
 pub mod member;
-pub mod signature;
+pub mod pending;
 pub mod subscription;
 pub mod tenant;
 pub mod token;
@@ -52,7 +52,7 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
         Command::Verifier(command) => verifier::run(&ctx, command),
         Command::Mediator(command) => mediator::run(&ctx, command),
         Command::Identity(command) => identity::run(&ctx, command),
-        Command::Signature(command) => signature::run(&ctx, command),
+        Command::Pending(command) => pending::run(&ctx, command),
         Command::Domain(command) => domain::run(&ctx, command),
         Command::Member(command) => member::run(&ctx, command),
         Command::Form(command) => form::run(&ctx, command),

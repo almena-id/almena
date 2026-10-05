@@ -755,15 +755,25 @@ async fn identities_are_registered_and_signed() {
         .stderr(predicate::str::contains("Signed."));
     env.on(
         "GET",
-        &tenant("/signatures"),
-        json!([{"id": "n2", "name": "Late", "signature": "outdated"}]),
+        &tenant("/pending"),
+        json!([
+            {"kind": "identity", "action": "sign", "id": "n2", "name": "Late",
+             "state": "outdated", "issuer": null, "credential_type": null,
+             "blocked_by": null, "yours": true},
+            {"kind": "credential", "action": "sign", "id": "a1", "name": "app_x",
+             "state": "accepted", "issuer": {"id": "i1", "name": "Club"},
+             "credential_type": "membership", "blocked_by": "status_list_unsigned",
+             "yours": false}
+        ]),
     )
     .await;
     env.cmd()
-        .args(["signature", "list"])
+        .args(["pending", "list"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("outdated"));
+        .stdout(predicate::str::contains("outdated"))
+        .stdout(predicate::str::contains("Club"))
+        .stdout(predicate::str::contains("status_list_unsigned"));
 }
 
 // --- domains, members -------------------------------------------------------

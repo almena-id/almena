@@ -102,7 +102,7 @@ and `create`, `update <id>`, `delete <id>` (which asks first, unless `--yes`).
 | `almena mediator list \| get \| create \| update \| delete \| publish \| unpublish` | The tenant's mediators |
 | `almena mediator choices` | The mediators the tenant, its issuers and verifiers may pick |
 | `almena identity list \| get \| create \| sign <id>` | The tenant's identities; sign an identity's next DID log entry |
-| `almena signature list` | Identities whose DID waits for a signature |
+| `almena pending list` | What waits in the tenant to be signed or published, in the order it is done: identities' DIDs, issuers, verifiers and mediators to publish, issuers' status lists and credentials to sign; what has to be done first, and whether it is yours |
 | `almena domain list \| add <domain> \| check <id> \| remove <id>` | Linked domains, proved by a DNS TXT record |
 | `almena member list \| invite` | Members and invitations |
 | `almena form list \| get \| create` | The tenant's forms (from flags, or `--file` with the API's body) |
