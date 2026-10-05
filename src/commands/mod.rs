@@ -6,8 +6,10 @@ pub mod agent;
 pub mod application;
 pub mod auth;
 pub mod catalog;
+pub mod category;
 mod completions;
 pub mod config;
+pub mod credential_type;
 mod described;
 pub mod domain;
 pub mod field;
@@ -18,8 +20,10 @@ pub mod issuer;
 pub mod mediator;
 pub mod member;
 pub mod signature;
+pub mod subscription;
 pub mod tenant;
 pub mod token;
+pub mod value_domain;
 pub mod verifier;
 
 use std::fs;
@@ -53,6 +57,10 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
         Command::Member(command) => member::run(&ctx, command),
         Command::Form(command) => form::run(&ctx, command),
         Command::Field(command) => field::run(&ctx, command),
+        Command::Category(command) => category::run(&ctx, command),
+        Command::ValueDomain(command) => value_domain::run(&ctx, command),
+        Command::Subscription(command) => subscription::run(&ctx, command),
+        Command::CredentialType(command) => credential_type::run(&ctx, command),
         Command::Catalog(command) => catalog::run(&ctx, command),
         Command::Application(command) => application::run(&ctx, command),
         Command::Issuance(command) => issuance::run(&ctx, command),

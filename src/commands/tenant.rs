@@ -12,7 +12,7 @@ pub enum TenantCommand {
     List,
     /// Show the tenant.
     Get,
-    /// Change the tenant's name, mediator or signing flow (admins).
+    /// Change the tenant's name, mediator, signing flow or languages (admins).
     Update {
         /// Its new name.
         #[arg(long)]
@@ -29,6 +29,10 @@ pub enum TenantCommand {
         /// The member who signs, under `single-user` (their user id; see `almena member list`).
         #[arg(long)]
         signer: Option<String>,
+        /// The languages it works in, of the platform's: all of them, repeated or
+        /// comma-separated (`--language en,es`); the trust anchor's are all.
+        #[arg(long = "language", value_delimiter = ',')]
+        languages: Vec<String>,
     },
     /// What the tenant still needs set up to operate.
     Health,
@@ -82,6 +86,7 @@ pub fn run(ctx: &mut Context, command: TenantCommand) -> anyhow::Result<()> {
             no_mediator,
             signing_flow,
             signer,
+            languages,
         } => {
             let tenant = ctx.tenant(&api)?;
             let mut body = Map::new();
@@ -99,9 +104,12 @@ pub fn run(ctx: &mut Context, command: TenantCommand) -> anyhow::Result<()> {
             if let Some(signer) = signer {
                 body.insert("signer_id".into(), json!(signer));
             }
+            if !languages.is_empty() {
+                body.insert("languages".into(), json!(languages));
+            }
             if body.is_empty() {
                 anyhow::bail!(
-                    "nothing to change: pass --name, --mediator, --signing-flow or --signer"
+                    "nothing to change: pass --name, --mediator, --signing-flow, --signer or --language"
                 );
             }
             show(
@@ -153,6 +161,7 @@ fn show(out: Output, tenant: &Value) {
             col("Mediator", "mediator.name"),
             col("Signing flow", "signing_flow"),
             col("Signer", "signer.email"),
+            col("Languages", "languages"),
             col("Created", "created_at"),
         ],
     );

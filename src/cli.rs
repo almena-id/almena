@@ -6,8 +6,9 @@ use clap_complete::Shell;
 use serde::{Deserialize, Serialize};
 
 use crate::commands::{
-    account, agent, application, auth, catalog, config, domain, field, form, identity, issuance,
-    issuer, mediator, member, signature, tenant, token, verifier,
+    account, agent, application, auth, catalog, category, config, credential_type, domain, field,
+    form, identity, issuance, issuer, mediator, member, signature, subscription, tenant, token,
+    value_domain, verifier,
 };
 
 /// The CLI's version: `ALMENA_VERSION` when the build sets it (the release's
@@ -125,12 +126,24 @@ pub enum Command {
     /// The tenant's members and invitations.
     #[command(subcommand)]
     Member(member::MemberCommand),
+    /// The tenant's subscription; the trust anchor's admins: every account's.
+    #[command(subcommand)]
+    Subscription(subscription::SubscriptionCommand),
     /// The tenant's forms.
     #[command(subcommand)]
     Form(form::FormCommand),
-    /// The tenant's own fields, beside Almena's catalogue.
+    /// The tenant's own fields, beside Almena's catalogue (the trust anchor's: the catalogue).
     #[command(subcommand)]
     Field(field::FieldCommand),
+    /// The tenant's own credential types (the trust anchor's: Almena's catalogue).
+    #[command(subcommand)]
+    CredentialType(credential_type::CredentialTypeCommand),
+    /// The trust anchor's categories for fields and credential types.
+    #[command(subcommand)]
+    Category(category::CategoryCommand),
+    /// The trust anchor's value lists, which coded fields draw on.
+    #[command(subcommand)]
+    ValueDomain(value_domain::ValueDomainCommand),
     /// Almena's public catalogues: fields, credential types and what is published.
     #[command(subcommand)]
     Catalog(catalog::CatalogCommand),

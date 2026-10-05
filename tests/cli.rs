@@ -440,12 +440,17 @@ async fn an_issuer_is_registered() {
     env.expect(
         "POST",
         &tenant("/issuers"),
-        json!({"name": "Academy", "description": null, "mediator_id": "m1"}),
+        json!({
+            "name": "Academy",
+            "description": {"en": "Degrees", "es": "Títulos"},
+            "mediator_id": "m1",
+        }),
         json!({"id": "i1", "name": "Academy"}),
     )
     .await;
     env.cmd()
         .args(["issuer", "create", "--name", "Academy", "--mediator", "m1"])
+        .args(["--description", "en=Degrees", "--description", "es=Títulos"])
         .assert()
         .success()
         .stderr(predicate::str::contains("almena issuer publish i1"));
@@ -917,6 +922,175 @@ async fn a_field_is_made_from_flags_over_a_file() {
         .assert()
         .success()
         .stderr(predicate::str::contains("custom:member_no"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_credential_type_is_made_from_flags() {
+    let env = Env::new().await;
+    env.expect(
+        "POST",
+        &tenant("/credential-types"),
+        json!({
+            "key": "visitor_pass",
+            "labels": {"en": "Visitor pass", "es": "Pase"},
+            "descriptions": {"en": "Who visits", "es": "Quién visita"},
+            "category": "membership",
+            "source": "Almena",
+            "claims": [
+                {"field": "given_name", "required": true},
+                {"field": "badge_number", "required": false},
+            ],
+            "w3c_type": "VisitorPassCredential",
+        }),
+        json!({
+            "id": "t1",
+            "key": "visitor_pass",
+            "type": {"formats": {"dc+sd-jwt": {"vct": "https://almena.id/credentials/visitor_pass/v1"}}},
+        }),
+    )
+    .await;
+    env.cmd()
+        .args(["credential-type", "create", "--key", "visitor_pass"])
+        .args(["--label", "en=Visitor pass", "--label", "es=Pase"])
+        .args([
+            "--description",
+            "en=Who visits",
+            "--description",
+            "es=Quién visita",
+        ])
+        .args(["--category", "membership", "--source", "Almena"])
+        .args(["--claim", "given_name", "--optional-claim", "badge_number"])
+        .args(["--w3c-type", "VisitorPassCredential"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "https://almena.id/credentials/visitor_pass/v1",
+        ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_field_is_changed_by_what_is_passed() {
+    let env = Env::new().await;
+    env.expect(
+        "PATCH",
+        &tenant("/fields/c1"),
+        json!({"labels": {"en": "Site", "es": "Sede"}, "category": "membership"}),
+        json!({"id": "c1", "key": "campus", "ref": "custom:campus"}),
+    )
+    .await;
+    env.cmd()
+        .args([
+            "field", "update", "c1", "--label", "en=Site", "--label", "es=Sede",
+        ])
+        .args(["--category", "membership"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("campus"));
+    env.cmd()
+        .args(["field", "update", "c1"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("nothing to change"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_credential_type_is_changed_by_what_is_passed() {
+    let env = Env::new().await;
+    env.expect(
+        "PATCH",
+        &tenant("/credential-types/t1"),
+        json!({
+            "claims": [
+                {"field": "given_name", "required": true},
+                {"field": "badge_number", "required": false},
+            ],
+            "source": "Almena, v2",
+        }),
+        json!({"id": "t1", "key": "visitor_pass", "type": {}}),
+    )
+    .await;
+    env.cmd()
+        .args(["credential-type", "update", "t1", "--source", "Almena, v2"])
+        .args(["--claim", "given_name", "--optional-claim", "badge_number"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("visitor_pass"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_anchor_sets_a_subscription() {
+    let env = Env::new().await;
+    env.expect(
+        "PUT",
+        &tenant("/accounts/a1/subscription"),
+        json!({
+            "plan": "standard",
+            "status": "past_due",
+            "current_period_end": "2026-12-31T23:59:59Z",
+            "note": "Invoice 7",
+        }),
+        json!({"id": "a1", "name": "Acme", "subscription": {"status": "past_due"}}),
+    )
+    .await;
+    env.cmd()
+        .args(["subscription", "set", "a1", "--status", "past-due"])
+        .args(["--until", "2026-12-31T23:59:59Z", "--note", "Invoice 7"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Acme"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_category_is_renamed() {
+    let env = Env::new().await;
+    env.expect(
+        "PATCH",
+        &tenant("/categories/k1"),
+        json!({"labels": {"en": "Health", "es": "Salud"}}),
+        json!({"id": "k1", "kind": "field", "key": "health", "labels": {"en": "Health"}}),
+    )
+    .await;
+    env.cmd()
+        .args([
+            "category",
+            "update",
+            "k1",
+            "--label",
+            "en=Health",
+            "--label",
+            "es=Salud",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("health"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_value_list_is_made_from_a_file() {
+    let env = Env::new().await;
+    let file = env.dir.path().join("blood.json");
+    let codes = json!([{"value": "A", "labels": {"en": "A", "es": "A"}}]);
+    std::fs::write(&file, json!({"codes": codes}).to_string()).unwrap();
+    env.expect(
+        "POST",
+        &tenant("/value-domains"),
+        json!({
+            "codes": codes,
+            "key": "blood_type",
+            "labels": {"en": "Blood types", "es": "Grupos"},
+            "source": "ISBT 128",
+        }),
+        json!({"id": "d1", "key": "blood_type", "uses": 0}),
+    )
+    .await;
+    env.cmd()
+        .args(["value-domain", "create", "--file"])
+        .arg(&file)
+        .args(["--key", "blood_type", "--source", "ISBT 128"])
+        .args(["--label", "en=Blood types", "--label", "es=Grupos"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("blood_type"));
 }
 
 #[tokio::test(flavor = "multi_thread")]

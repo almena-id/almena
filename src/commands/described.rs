@@ -6,7 +6,7 @@ use clap::{Args, Subcommand};
 use serde_json::{Map, Value, json};
 
 use crate::client::Client;
-use crate::commands::{PageArgs, paged};
+use crate::commands::{PageArgs, paged, parse_text, texts};
 use crate::context::Context;
 use crate::output::{Column, Output, col, notice};
 use crate::wallet;
@@ -51,9 +51,9 @@ pub enum DescribedCommand {
         /// Its name (1–200 characters).
         #[arg(long)]
         name: String,
-        /// What it is for.
-        #[arg(long)]
-        description: Option<String>,
+        /// What it is for, in a language, LANG=TEXT; repeat per language.
+        #[arg(long, value_name = "LANG=TEXT", value_parser = parse_text)]
+        description: Vec<(String, String)>,
         /// The mediator it receives messages through (see `almena mediator choices`).
         #[arg(long)]
         mediator: Option<String>,
@@ -114,9 +114,10 @@ pub struct UpdateArgs {
     /// Its new name.
     #[arg(long)]
     pub name: Option<String>,
-    /// Its new description.
-    #[arg(long, conflicts_with = "no_description")]
-    pub description: Option<String>,
+    /// Its new description in a language, LANG=TEXT; repeat per language
+    /// (the whole description: languages left out are dropped).
+    #[arg(long, value_name = "LANG=TEXT", value_parser = parse_text, conflicts_with = "no_description")]
+    pub description: Vec<(String, String)>,
     /// Remove its description.
     #[arg(long)]
     pub no_description: bool,
@@ -167,7 +168,11 @@ pub fn run(ctx: &Context, kind: Kind, command: DescribedCommand) -> anyhow::Resu
         } => {
             let made = api.post(
                 &["tenants", &tenant, collection],
-                &json!({"name": name, "description": description, "mediator_id": mediator}),
+                &json!({
+                    "name": name,
+                    "description": (!description.is_empty()).then(|| texts(&description)),
+                    "mediator_id": mediator,
+                }),
             )?;
             show(ctx.out, &made);
             notice(format!(
@@ -181,8 +186,8 @@ pub fn run(ctx: &Context, kind: Kind, command: DescribedCommand) -> anyhow::Resu
             if let Some(name) = args.name {
                 body.insert("name".into(), json!(name));
             }
-            if let Some(description) = args.description {
-                body.insert("description".into(), json!(description));
+            if !args.description.is_empty() {
+                body.insert("description".into(), texts(&args.description));
             } else if args.no_description {
                 body.insert("description".into(), Value::Null);
             }
