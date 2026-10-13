@@ -8,6 +8,7 @@ use anyhow::Context as _;
 use clap::{Subcommand, ValueEnum};
 use serde_json::{Value, json};
 
+use crate::commands::{PageArgs, paged_with};
 use crate::context::Context;
 use crate::output::{Output, col, notice};
 use crate::wallet;
@@ -19,6 +20,8 @@ pub enum ApplicationCommand {
         /// Only those sent to this issuer (its id).
         #[arg(long)]
         issuer: Option<String>,
+        #[command(flatten)]
+        page: PageArgs,
     },
     /// Show one: what the holder signed, its files and presented credentials.
     Get {
@@ -96,12 +99,13 @@ pub fn run(ctx: &Context, command: ApplicationCommand) -> anyhow::Result<()> {
     let api = ctx.api()?;
     let tenant = ctx.tenant(&api)?;
     match command {
-        ApplicationCommand::List { issuer } => {
-            let query: Vec<(&str, String)> = issuer
+        ApplicationCommand::List { issuer, page } => {
+            let filters: Vec<(&str, String)> = issuer
                 .into_iter()
                 .map(|issuer| ("issuer_id", issuer))
                 .collect();
-            let received = api.get_query(&["tenants", &tenant, "applications"], &query)?;
+            let received =
+                paged_with(&api, &["tenants", &tenant, "applications"], &page, &filters)?;
             ctx.out.list(
                 &received,
                 &[

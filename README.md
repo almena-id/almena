@@ -4,6 +4,30 @@ Command-line client of the Almena ID platform. The binary is `almena`.
 
 ## Install
 
+With the install script, on macOS (Apple silicon) or Linux (x86_64):
+
+```bash
+curl -fsSL https://almena.id/install.sh | sh
+```
+
+It downloads the latest release, checks it against `SHA256SUMS` and puts
+`almena` in `/usr/local/bin` (through `sudo` when needed). `ALMENA_INSTALL_DIR`
+picks another directory and `ALMENA_INSTALL_VERSION` another version:
+`curl -fsSL https://almena.id/install.sh | ALMENA_INSTALL_DIR=~/.local/bin sh`.
+Running it again upgrades.
+
+On Windows (x86_64), from PowerShell:
+
+```powershell
+irm https://almena.id/install.ps1 | iex
+```
+
+It checks the download against `SHA256SUMS` and its Authenticode signature,
+puts `almena.exe` in `%LOCALAPPDATA%\Programs\almena` and adds that folder to
+your user `PATH`; no administrator rights needed. The same `ALMENA_INSTALL_DIR`
+and `ALMENA_INSTALL_VERSION` apply (`$env:ALMENA_INSTALL_VERSION = '2026.10.1'`
+before running it). Running it again upgrades.
+
 With [Homebrew](https://brew.sh), on macOS (Apple silicon) or Linux (x86_64):
 
 ```bash
@@ -101,11 +125,11 @@ and `create`, `update <id>`, `delete <id>` (which asks first, unless `--yes`).
 | `almena issuer status-list list \| sign <id>` | Its status lists (entries used, revoked, suspended, whether to sign), and signing one from the wallet (`--status-list`; the current one by default) |
 | `almena mediator list \| get \| create \| update \| delete \| publish \| unpublish` | The tenant's mediators |
 | `almena mediator choices` | The mediators the tenant, its issuers and verifiers may pick |
-| `almena identity list \| get \| create \| sign <id>` | The tenant's identities; sign an identity's next DID log entry |
+| `almena identity list \| get \| create \| update \| delete \| sign <id>` | The tenant's identities: rename one, delete one nothing acts as and nobody signed (admins), sign an identity's next DID log entry |
 | `almena pending list` | What waits in the tenant to be signed or published, in the order it is done: identities' DIDs, issuers, verifiers and mediators to publish, issuers' status lists and credentials to sign; what has to be done first, and whether it is yours |
 | `almena domain list \| add <domain> \| check <id> \| remove <id>` | Linked domains, proved by a DNS TXT record |
-| `almena member list \| invite` | Members and invitations |
-| `almena form list \| get \| create` | The tenant's forms (from flags, or `--file` with the API's body) |
+| `almena member list \| invite \| uninvite \| update \| remove \| leave` | Members and invitations: take an invitation back, change a member's role or remove them (admins), leave the tenant yourself |
+| `almena form list \| get \| create \| update \| delete` | The tenant's forms (from flags, or `--file` with the API's body); `update` puts what is given over what it has — in use, it may only take more; `delete` one no offer puts and nothing was made with |
 | `almena form schema \| dcql \| verify <id>` | Its answers' JSON Schema, its DCQL query; verify presented credentials |
 | `almena subscription get [<account>] \| list \| set <account> \| remove <account>` | The tenant's subscription and the features it gives; the trust anchor's admins list every account and set (`--status`, `--plan`, `--until`, `--note`) or remove its subscription |
 | `almena field list \| create \| update \| delete` | The tenant's own fields (`custom:{key}` in forms); the trust anchor's are Almena's catalogue (`--category`, `--source`; groups with `--type group` and their `parts` in `--file`) |
@@ -114,7 +138,7 @@ and `create`, `update <id>`, `delete <id>` (which asks first, unless `--yes`).
 | `almena credential-type list \| create \| update \| delete` | The tenant's own credential types (`custom:{key}`, when its subscription allows it); the trust anchor's are Almena's catalogue (`--claim`, `--optional-claim`, `--issuance`, `--vct`, `--w3c-type`, `--mdoc-doctype`) |
 | `almena catalog fields \| credentials \| issuers \| verifiers \| mediators \| offers` | Almena's public catalogues and what is published (no sign-in); `issuers --search <text> --grants <type>` narrows them |
 | `almena catalog offer <issuer-slug> <type>` | An issuer's offer |
-| `almena application list \| get \| file \| decide` | Applications the tenant's issuers received; accept or reject one |
+| `almena application list \| get \| file \| decide` | Applications the tenant's issuers received (a page at a time; `--all`); accept or reject one |
 | `almena issuance get \| set \| sign <application>` | Settle an accepted application's credential and sign it from the wallet |
 | `almena application credential-status <id> valid\|suspended\|revoked` | Suspend, reinstate or revoke an issued credential: the issuer's signer signs its status list from the wallet; revoking asks first |
 | `almena agent card \| ask \| chat` | Talk to the Almena agent (A2A); `ask` streams the answer |

@@ -23,6 +23,19 @@ pub enum IdentityCommand {
         #[arg(long)]
         name: String,
     },
+    /// Rename it (its DID stays; whatever acts as it keeps its own name).
+    Update {
+        /// Its id.
+        id: String,
+        /// Its new name (1–200 characters).
+        #[arg(long)]
+        name: String,
+    },
+    /// Delete it (admins): only one nothing acts as and nobody signed.
+    Delete {
+        /// Its id.
+        id: String,
+    },
     /// Sign its next did:webvh log entry from your wallet.
     Sign {
         /// Its id.
@@ -57,6 +70,18 @@ pub fn run(ctx: &Context, command: IdentityCommand) -> anyhow::Result<()> {
                 "Registered. Sign its first log entry with `almena identity sign {}`.",
                 made["id"].as_str().unwrap_or_default()
             ));
+        }
+        IdentityCommand::Update { id, name } => {
+            let changed = api.patch(
+                &["tenants", &tenant, "identities", &id],
+                &json!({"name": name}),
+            )?;
+            show(ctx.out, &changed);
+        }
+        IdentityCommand::Delete { id } => {
+            ctx.confirm("Delete that identity?")?;
+            api.delete(&["tenants", &tenant, "identities", &id])?;
+            notice("Identity deleted.");
         }
         IdentityCommand::Sign { id } => {
             let request = api.post(

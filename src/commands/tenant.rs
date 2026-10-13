@@ -49,6 +49,8 @@ pub enum SigningFlow {
     AnyAdmin,
     /// One member, named with --signer.
     SingleUser,
+    /// Nobody: the platform signs for the tenant, no wallet needed.
+    None,
 }
 
 impl SigningFlow {
@@ -56,6 +58,7 @@ impl SigningFlow {
         match self {
             Self::AnyAdmin => "any_admin",
             Self::SingleUser => "single_user",
+            Self::None => "none",
         }
     }
 }

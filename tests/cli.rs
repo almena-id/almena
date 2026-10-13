@@ -498,6 +498,40 @@ async fn publishing_asks_the_wallet_then_shows_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn with_no_signature_the_platform_publishes_without_a_wallet() {
+    let env = Env::new().await;
+    env.on(
+        "POST",
+        &tenant("/verifiers/v1/publish"),
+        json!({"status": "signed"}),
+    )
+    .await;
+    env.on(
+        "GET",
+        &tenant("/verifiers/v1"),
+        json!({"id": "v1", "published_at": "2026-10-16T10:00:00Z"}),
+    )
+    .await;
+    env.cmd()
+        .args(["verifier", "publish", "v1"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Published."))
+        .stderr(predicate::str::contains("Scan").not());
+    env.expect(
+        "PATCH",
+        &tenant(""),
+        json!({"signing_flow": "none"}),
+        json!({"id": TENANT, "signing_flow": "none"}),
+    )
+    .await;
+    env.cmd()
+        .args(["tenant", "update", "--signing-flow", "none"])
+        .assert()
+        .success();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn an_expired_wallet_request_is_said_so() {
     let env = Env::new().await;
     let request = json!({"id": "r1", "deep_link": "almena://auth?request_uri=u", "poll": "p1"});
@@ -781,7 +815,8 @@ async fn identities_are_registered_and_signed() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_domain_is_linked_with_its_record() {
     let env = Env::new().await;
-    let record = json!({"type": "TXT", "name": "_almena.acme.com", "value": "almena-verify=x"});
+    let record =
+        json!({"type": "TXT", "name": "_almena-ten_abc.acme.com", "value": "almena-verify=x"});
     env.expect(
         "POST",
         &tenant("/domains"),
@@ -794,7 +829,7 @@ async fn a_domain_is_linked_with_its_record() {
         .assert()
         .success()
         .stderr(predicate::str::contains(
-            "_almena.acme.com TXT \"almena-verify=x\"",
+            "_almena-ten_abc.acme.com TXT \"almena-verify=x\"",
         ));
     env.on(
         "POST",
@@ -1175,9 +1210,10 @@ async fn applications_are_listed_by_issuer_and_decided() {
     Mock::given(method("GET"))
         .and(path(tenant("/applications")))
         .and(query_param("issuer_id", "i1"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(json!([{"id": "a1", "status": "submitted"}])),
-        )
+        .and(query_param("limit", "20"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"items": [{"id": "a1", "status": "submitted"}], "next_cursor": null}),
+        ))
         .expect(1)
         .mount(&env.server)
         .await;
@@ -1461,4 +1497,153 @@ async fn settings_are_kept_per_profile() {
         .success();
     let config = std::fs::read_to_string(env.dir.path().join("config.toml")).unwrap();
     assert!(config.contains("[profiles.staging]") && !config.contains("output"));
+}
+
+// --- members, forms and identities: changing and removing ---------------------
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_member_is_made_admin() {
+    let env = Env::new().await;
+    env.expect(
+        "PATCH",
+        &tenant("/members/u2"),
+        json!({"role": "admin"}),
+        json!({"user_id": "u2", "email": "bob@example.org", "role": "admin", "status": "member"}),
+    )
+    .await;
+    env.cmd()
+        .args(["member", "update", "u2", "--role", "admin"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("admin"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn removing_a_member_asks_and_the_refusal_is_said() {
+    let env = Env::new().await;
+    env.cmd()
+        .args(["member", "remove", "u2"])
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("--yes"));
+    env.refuse("DELETE", &tenant("/members/u2"), 409, json!("member_signs"))
+        .await;
+    env.cmd()
+        .args(["--yes", "member", "remove", "u2"])
+        .assert()
+        .code(5)
+        .stderr(predicate::str::contains("member_signs"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn leaving_names_yourself() {
+    let env = Env::new().await;
+    env.on(
+        "GET",
+        "/api/v1/auth/me",
+        json!({"id": "u1", "email": "ada@example.org"}),
+    )
+    .await;
+    Mock::given(method("DELETE"))
+        .and(path(tenant("/members/u1")))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&env.server)
+        .await;
+    env.cmd()
+        .args(["--yes", "member", "leave"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("You left"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_invitation_is_taken_back() {
+    let env = Env::new().await;
+    Mock::given(method("DELETE"))
+        .and(path(tenant("/invitations/i1")))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&env.server)
+        .await;
+    env.cmd()
+        .args(["--yes", "member", "uninvite", "i1"])
+        .assert()
+        .success();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_form_update_puts_flags_over_what_it_has() {
+    let env = Env::new().await;
+    env.on(
+        "GET",
+        &tenant("/forms/f1"),
+        json!({
+            "id": "f1", "slug": "frm_1", "name": {"en": "Old"}, "description": null,
+            "fields": [{"ref": "given_name", "required": true}],
+            "credentials": [{"key": "verified_email", "type": "verified_email", "required": true,
+                             "claims": ["email"], "trust": "registry", "fills": ["email"]}],
+            "in_use": true, "created_at": "2026-10-01T00:00:00Z", "updated_at": "2026-10-01T00:00:00Z",
+        }),
+    )
+    .await;
+    env.expect(
+        "PUT",
+        &tenant("/forms/f1"),
+        json!({
+            "name": {"en": "New", "es": "Nuevo"}, "description": null,
+            "fields": [{"ref": "given_name", "required": true}],
+            "credentials": [{"key": "verified_email", "type": "verified_email", "required": true,
+                             "claims": ["email"], "trust": "registry"}],
+        }),
+        json!({"id": "f1", "name": {"en": "New"}, "fields": [], "credentials": [], "in_use": true}),
+    )
+    .await;
+    env.cmd()
+        .args([
+            "form", "update", "f1", "--name", "en=New", "--name", "es=Nuevo",
+        ])
+        .assert()
+        .success();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_form_in_use_is_not_deleted() {
+    let env = Env::new().await;
+    env.refuse("DELETE", &tenant("/forms/f1"), 409, json!("form_in_use"))
+        .await;
+    env.cmd()
+        .args(["--yes", "form", "delete", "f1"])
+        .assert()
+        .code(5)
+        .stderr(predicate::str::contains("form_in_use"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_identity_is_renamed_and_deleted() {
+    let env = Env::new().await;
+    env.expect(
+        "PATCH",
+        &tenant("/identities/i1"),
+        json!({"name": "Keys"}),
+        json!({"id": "i1", "name": "Keys", "did": null}),
+    )
+    .await;
+    env.cmd()
+        .args(["identity", "update", "i1", "--name", "Keys"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Keys"));
+    env.refuse(
+        "DELETE",
+        &tenant("/identities/i1"),
+        409,
+        json!("identity_signed"),
+    )
+    .await;
+    env.cmd()
+        .args(["--yes", "identity", "delete", "i1"])
+        .assert()
+        .code(5)
+        .stderr(predicate::str::contains("identity_signed"));
 }

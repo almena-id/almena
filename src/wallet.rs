@@ -26,8 +26,13 @@ pub fn asking(locale: &str) -> Value {
 }
 
 /// Shows the request (`{id, deep_link, poll, …}`) and waits for its outcome:
-/// `signed_in` (with `session`), `linked`, `taken` or `signed`.
+/// `signed_in` (with `session`), `linked`, `taken` or `signed`. A tenant whose
+/// signing flow is `none` gets no request but `{status: "signed"}`: the
+/// platform signed already, and there is nothing to wait for.
 pub fn wait(api: &Client, request: &Value, what: &str) -> anyhow::Result<Value> {
+    if request["status"] == "signed" {
+        return Ok(request.clone());
+    }
     let (Some(id), Some(link), Some(poll)) = (
         request["id"].as_str(),
         request["deep_link"].as_str(),

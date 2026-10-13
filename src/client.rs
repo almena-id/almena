@@ -167,24 +167,24 @@ impl Client {
     }
 }
 
-/// The API's error body, `{"detail": …}`: a code, an object with a `code`, or
-/// (a request it could not take) FastAPI's list of problems.
+/// The API's error body: `{"detail": "<code>"}` with what more says why beside
+/// it (`field`, `credential`, `errors`), or (a request it could not take)
+/// FastAPI's list of problems in `detail`.
 pub fn refusal(status: u16, body: &Value) -> ApiError {
     let detail = &body["detail"];
     let (code, problems) = match detail {
-        Value::String(code) => (code.clone(), Vec::new()),
-        Value::Object(object) => {
-            let code = object
-                .get("code")
-                .and_then(Value::as_str)
-                .unwrap_or("refused")
-                .to_owned();
-            let problems = object
-                .iter()
-                .filter(|(key, _)| key.as_str() != "code")
-                .map(|(key, value)| format!("{key}: {}", compact(value)))
-                .collect();
-            (code, problems)
+        Value::String(code) => {
+            let problems = body
+                .as_object()
+                .map(|object| {
+                    object
+                        .iter()
+                        .filter(|(key, _)| key.as_str() != "detail")
+                        .map(|(key, value)| format!("{key}: {}", compact(value)))
+                        .collect()
+                })
+                .unwrap_or_default();
+            (code.clone(), problems)
         }
         Value::Array(items) => {
             let problems = items
@@ -259,7 +259,7 @@ mod tests {
 
         let error = refusal(
             422,
-            &json!({"detail": {"code": "claims_invalid", "errors": {"x": 1}}}),
+            &json!({"detail": "claims_invalid", "errors": {"x": 1}}),
         );
         assert_eq!(error.code, "claims_invalid");
         assert_eq!(error.problems, vec![r#"errors: {"x":1}"#]);
