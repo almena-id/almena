@@ -54,7 +54,7 @@ pub enum MediatorCommand {
         /// Its id.
         id: String,
     },
-    /// Publish it: endorse it from your wallet (whoever signs as the tenant).
+    /// Publish it: its DID resolves and the catalogue lists it (admins).
     Publish {
         /// Its id.
         id: String,
@@ -172,7 +172,6 @@ fn show(out: Output, mediator: &Value) {
             col("DID", "did"),
             col("Signature", "signature"),
             col("Published", "published_at"),
-            col("Endorsed until", "endorsed_until"),
             col("Created", "created_at"),
         ],
     );

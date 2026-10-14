@@ -480,12 +480,12 @@ async fn an_update_sends_null_to_remove() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn publishing_asks_the_wallet_then_shows_it() {
+async fn publishing_shows_what_the_api_answers() {
     let env = Env::new().await;
-    env.wallet(&tenant("/issuers/i1/publish"), "signed").await;
-    env.on(
-        "GET",
-        &tenant("/issuers/i1"),
+    env.expect(
+        "POST",
+        &tenant("/issuers/i1/publish"),
+        Value::Null,
         json!({"id": "i1", "published_at": "2026-10-02T10:00:00Z"}),
     )
     .await;
@@ -498,44 +498,37 @@ async fn publishing_asks_the_wallet_then_shows_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn with_no_signature_the_platform_publishes_without_a_wallet() {
+async fn publishing_before_the_did_is_signed_is_refused() {
     let env = Env::new().await;
-    env.on(
+    env.refuse(
         "POST",
-        &tenant("/verifiers/v1/publish"),
-        json!({"status": "signed"}),
-    )
-    .await;
-    env.on(
-        "GET",
-        &tenant("/verifiers/v1"),
-        json!({"id": "v1", "published_at": "2026-10-16T10:00:00Z"}),
+        &tenant("/mediators/m1/publish"),
+        409,
+        json!("identity_pending"),
     )
     .await;
     env.cmd()
-        .args(["verifier", "publish", "v1"])
+        .args(["mediator", "publish", "m1"])
         .assert()
-        .success()
-        .stderr(predicate::str::contains("Published."))
-        .stderr(predicate::str::contains("Scan").not());
-    env.expect(
-        "PATCH",
-        &tenant(""),
-        json!({"signing_flow": "none"}),
-        json!({"id": TENANT, "signing_flow": "none"}),
-    )
-    .await;
+        .code(5)
+        .stderr(predicate::str::contains("identity_pending"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn there_is_no_flow_without_a_signature() {
+    let env = Env::new().await;
     env.cmd()
         .args(["tenant", "update", "--signing-flow", "none"])
         .assert()
-        .success();
+        .failure()
+        .stderr(predicate::str::contains("invalid value 'none'"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_expired_wallet_request_is_said_so() {
     let env = Env::new().await;
     let request = json!({"id": "r1", "deep_link": "almena://auth?request_uri=u", "poll": "p1"});
-    env.on("POST", &tenant("/mediators/m1/publish"), request)
+    env.on("POST", &tenant("/identities/n1/sign"), request)
         .await;
     env.refuse(
         "POST",
@@ -545,7 +538,7 @@ async fn an_expired_wallet_request_is_said_so() {
     )
     .await;
     env.cmd()
-        .args(["mediator", "publish", "m1"])
+        .args(["identity", "sign", "n1"])
         .assert()
         .code(1)
         .stderr(predicate::str::contains("did not answer in time"));

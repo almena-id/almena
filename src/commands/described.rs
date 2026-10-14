@@ -1,6 +1,5 @@
 //! What issuers and verifiers share (and, publishing and deleting, mediators):
-//! the directory's items, registered in a tenant, published by endorsing them
-//! from the wallet of whoever signs as the tenant.
+//! the directory's items, registered in a tenant and published by its admins.
 
 use clap::{Args, Subcommand};
 use serde_json::{Map, Value, json};
@@ -9,7 +8,6 @@ use crate::client::Client;
 use crate::commands::{PageArgs, paged, parse_text, texts};
 use crate::context::Context;
 use crate::output::{Column, Output, col, notice};
-use crate::wallet;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Kind {
@@ -65,7 +63,7 @@ pub enum DescribedCommand {
         /// Its id.
         id: String,
     },
-    /// Publish it: endorse it from your wallet (whoever signs as the tenant).
+    /// Publish it: its DID resolves and the catalogue lists it (admins).
     Publish {
         /// Its id.
         id: String,
@@ -245,7 +243,6 @@ pub fn show(out: Output, item: &Value) {
             col("Mediator", "mediator.name"),
             col("Signature", "signature"),
             col("Published", "published_at"),
-            col("Endorsed until", "endorsed_until"),
             col("Document", "document_url"),
             col("Created", "created_at"),
         ],
@@ -324,14 +321,12 @@ pub fn publish(
     id: &str,
     show: fn(Output, &Value),
 ) -> anyhow::Result<()> {
-    let collection = kind.segment();
-    let request = api.post(
-        &["tenants", tenant, collection, id, "publish"],
-        &wallet::asking(ctx.locale()),
+    let item = api.post(
+        &["tenants", tenant, kind.segment(), id, "publish"],
+        &Value::Null,
     )?;
-    wallet::wait(api, &request, &format!("endorse this {}", kind.name()))?;
     notice("Published.");
-    show(ctx.out, &api.get(&["tenants", tenant, collection, id])?);
+    show(ctx.out, &item);
     Ok(())
 }
 

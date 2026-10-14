@@ -98,8 +98,8 @@ starts, or after 30 minutes unused; an API token lasts the days it was made
 for (up to 365). Logging out of an API token only forgets it: revoke it with
 `almena token delete`.
 
-Whatever the tenant signs — publishing an issuer, verifier or mediator, an
-identity's DID log, a credential — is signed from the wallet of whoever signs
+Whatever the tenant signs — an identity's DID log, a status list, a
+credential — is signed from the wallet of whoever signs
 as the tenant: the command shows a QR code and waits for the wallet. Link
 yours first with `almena account link-wallet`.
 
@@ -117,7 +117,7 @@ and `create`, `update <id>`, `delete <id>` (which asks first, unless `--yes`).
 | `almena tenant list \| get \| update \| health` | Your tenants; the tenant's name, mediator and signing flow; what it still needs |
 | `almena tenant use <id-or-name>` | Work in that tenant from now on (this profile) |
 | `almena issuer list \| get \| create \| update \| delete` | The tenant's issuers (`verifier` the same, for verifiers); `--description LANG=TEXT`, once per language |
-| `almena issuer publish \| unpublish <id>` | Publish (endorsed from the wallet), or back to a draft |
+| `almena issuer publish \| unpublish <id>` | Publish (admins: its DID resolves and the catalogue lists it), or back to a draft |
 | `almena issuer signing get \| set <id>` | The member whose wallet signs for it |
 | `almena verifier verify <id> --form <form-id>` | Ask a wallet, by QR in the terminal, to present what the form asks for as that verifier (published); waits and shows the verdict |
 | `almena issuer queue get \| create \| rotate \| delete <id>` | Its queue at the broker, where its back office reads what happens to it (`verifier` the same); `create` and `rotate` print the user's password, once |

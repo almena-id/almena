@@ -1,7 +1,7 @@
 //! Asking the Almena wallet: the request the API makes is shown as a QR code
 //! and a link, then polled until the wallet has answered (or it expires).
 //! Signing in, linking the wallet, and every signature the tenant makes
-//! (publishing, an identity's log, a credential) go this way.
+//! (an identity's log, a status list, a credential) go this way.
 
 use std::thread;
 use std::time::Duration;
@@ -26,13 +26,8 @@ pub fn asking(locale: &str) -> Value {
 }
 
 /// Shows the request (`{id, deep_link, poll, …}`) and waits for its outcome:
-/// `signed_in` (with `session`), `linked`, `taken` or `signed`. A tenant whose
-/// signing flow is `none` gets no request but `{status: "signed"}`: the
-/// platform signed already, and there is nothing to wait for.
+/// `signed_in` (with `session`), `linked`, `taken` or `signed`.
 pub fn wait(api: &Client, request: &Value, what: &str) -> anyhow::Result<Value> {
-    if request["status"] == "signed" {
-        return Ok(request.clone());
-    }
     let (Some(id), Some(link), Some(poll)) = (
         request["id"].as_str(),
         request["deep_link"].as_str(),
