@@ -190,7 +190,12 @@ async fn logout_ends_the_session_and_forgets_it() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_wallet_sign_in_keeps_the_session() {
     let env = Env::signed_out().await;
-    let request = json!({"id": "r1", "deep_link": "almena://auth?request_uri=u", "poll": "p1"});
+    let request = json!({
+        "id": "r1",
+        "deep_link": "https://almena.id/w/auth?request_uri=u",
+        "scheme_link": "almena://auth?request_uri=u",
+        "poll": "p1",
+    });
     Mock::given(method("POST"))
         .and(path("/api/v1/auth/wallet/requests"))
         .and(body_json(
@@ -211,7 +216,10 @@ async fn a_wallet_sign_in_keeps_the_session() {
         .args(["auth", "login", "--wallet"])
         .assert()
         .success()
-        .stderr(predicate::str::contains("almena://auth?request_uri=u"));
+        // The code carries the https link; this computer opens the scheme one.
+        .stderr(predicate::str::contains(
+            "Or open on this device: almena://auth?request_uri=u",
+        ));
     let kept = std::fs::read_to_string(env.dir.path().join("credentials.toml")).unwrap();
     assert!(kept.contains("\"s2\""));
 }

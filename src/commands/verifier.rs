@@ -44,7 +44,8 @@ fn verify(ctx: &Context, id: &str, form: &str) -> anyhow::Result<()> {
         bail!("the API's verification is missing its id or link");
     };
     let who = opened["verifier"]["name"].as_str().unwrap_or(id).to_owned();
-    wallet::show(link, &format!("present credentials to {who}"));
+    let here = opened["scheme_link"].as_str().unwrap_or(link);
+    wallet::show(link, here, &format!("present credentials to {who}"));
     let seen = loop {
         let seen: Value = api.get(&[
             "tenants",

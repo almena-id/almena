@@ -1,5 +1,9 @@
 //! Asking the Almena wallet: the request the API makes is shown as a QR code
-//! and a link, then polled until the wallet has answered (or it expires).
+//! and a link, then polled until the wallet has answered (or it expires). The
+//! code carries the API's `deep_link` (`https://almena.id/w/…`, which a phone
+//! opens in the wallet, even from its camera); the link to open on this
+//! computer, which has no universal links, is its `scheme_link` (`almena://…`)
+//! when the API gives one.
 //! Signing in, linking the wallet, and every signature the tenant makes
 //! (an identity's log, a status list, a credential) go this way.
 
@@ -25,7 +29,7 @@ pub fn asking(locale: &str) -> Value {
     json!({"locale": locale, "client": CLIENT})
 }
 
-/// Shows the request (`{id, deep_link, poll, …}`) and waits for its outcome:
+/// Shows the request (`{id, deep_link, scheme_link, poll, …}`) and waits for its outcome:
 /// `signed_in` (with `session`), `linked`, `taken` or `signed`.
 pub fn wait(api: &Client, request: &Value, what: &str) -> anyhow::Result<Value> {
     let (Some(id), Some(link), Some(poll)) = (
@@ -35,7 +39,7 @@ pub fn wait(api: &Client, request: &Value, what: &str) -> anyhow::Result<Value> 
     ) else {
         bail!("the API's wallet request is missing its id, link or poll secret");
     };
-    show(link, what);
+    show(link, request["scheme_link"].as_str().unwrap_or(link), what);
     loop {
         let result = match api.post(
             &["auth", "wallet", "requests", id, "result"],
@@ -59,8 +63,9 @@ pub fn wait(api: &Client, request: &Value, what: &str) -> anyhow::Result<Value> 
     }
 }
 
-/// The link as a QR code and as text, and that it is being waited for.
-pub fn show(link: &str, what: &str) {
+/// The link as a QR code (`link`) and as text to open here (`here`), and that
+/// it is being waited for.
+pub fn show(link: &str, here: &str, what: &str) {
     notice(format!("Scan with your Almena wallet to {what}:\n"));
     if let Ok(code) = QrCode::new(link.as_bytes()) {
         let image = code
@@ -71,6 +76,6 @@ pub fn show(link: &str, what: &str) {
             .build();
         notice(image);
     }
-    notice(format!("\nOr open on this device: {link}"));
+    notice(format!("\nOr open on this device: {here}"));
     notice("Waiting for the wallet… (Ctrl-C to stop)");
 }
