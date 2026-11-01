@@ -398,6 +398,33 @@ async fn tenant_health_lists_its_checks() {
         .stdout(predicate::str::contains("missing"));
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn tenant_activity_lists_its_days_and_totals() {
+    let env = Env::new().await;
+    let day = json!({
+        "date": "2026-10-31", "submitted": 4, "accepted": 3, "rejected": 1,
+        "issued": 2, "verified": 5, "failed": 0,
+    });
+    Mock::given(method("GET"))
+        .and(path(tenant("/activity")))
+        .and(query_param("days", "14"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "days": [day],
+            "applications": {"submitted": 1, "accepted": 0, "rejected": 1, "issued": 2},
+            "credentials": {"valid": 2, "suspended": 0, "revoked": 7},
+            "verifications": {"verified": 5, "failed": 0},
+        })))
+        .expect(1)
+        .mount(&env.server)
+        .await;
+    env.cmd()
+        .args(["tenant", "activity", "--days", "14"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("revoked 7"))
+        .stdout(predicate::str::contains("2026-10-31"));
+}
+
 // --- issuers, verifiers, mediators, identities ------------------------------
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1079,6 +1106,45 @@ async fn the_anchor_sets_a_subscription() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_category_is_made_with_an_icon() {
+    let env = Env::new().await;
+    env.expect(
+        "POST",
+        &tenant("/categories"),
+        json!({"kind": "credential", "key": "travel", "labels": {"en": "Travel"}, "icon": "plane"}),
+        json!({"id": "k2", "kind": "credential", "key": "travel", "labels": {"en": "Travel"}, "icon": "plane", "uses": 0}),
+    )
+    .await;
+    env.cmd()
+        .args([
+            "category",
+            "create",
+            "--kind",
+            "credential",
+            "--key",
+            "travel",
+        ])
+        .args(["--label", "en=Travel", "--icon", "plane"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("plane"));
+    env.expect(
+        "PATCH",
+        &tenant("/categories/k2"),
+        json!({"labels": {"en": "Trips"}, "icon": "globe"}),
+        json!({"id": "k2", "kind": "credential", "key": "travel", "labels": {"en": "Trips"}, "icon": "globe", "uses": 0}),
+    )
+    .await;
+    env.cmd()
+        .args([
+            "category", "update", "k2", "--label", "en=Trips", "--icon", "globe",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("globe"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_category_is_renamed() {
     let env = Env::new().await;
     env.expect(
@@ -1193,6 +1259,74 @@ async fn the_catalogue_needs_no_sign_in() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Matrícula").and(predicate::str::contains("iss_x")));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn offers_are_searched_and_grouped_by_category() {
+    let env = Env::signed_out().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/catalog/offers"))
+        .and(query_param("q", "school card"))
+        .and(query_param("category", "education"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "items": [{
+                "issuer": {"slug": "iss_x", "name": "Uni", "description": null, "did": "did:web:x"},
+                "credential_type": {
+                    "id": "enrollment",
+                    "labels": {"en": "Enrollment"},
+                    "descriptions": {},
+                    "category": {"id": "education", "labels": {}, "icon": "graduation-cap"},
+                },
+            }],
+            "next_cursor": null,
+            "total": 1,
+        })))
+        .expect(1)
+        .mount(&env.server)
+        .await;
+    env.cmd()
+        .args([
+            "catalog",
+            "offers",
+            "--query",
+            "school card",
+            "--category",
+            "education",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("graduation-cap"));
+    env.on(
+        "GET",
+        "/api/v1/catalog/offers/categories",
+        json!([{"id": "education", "labels": {"en": "Education"}, "icon": "graduation-cap", "offers": 3}]),
+    )
+    .await;
+    env.cmd()
+        .args(["catalog", "offer-categories"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Education").and(predicate::str::contains("3")));
+    env.on(
+        "GET",
+        "/api/v1/catalog/issuers/iss_x/offers",
+        json!({
+            "issuer": {"slug": "iss_x", "name": "Uni", "description": null, "did": "did:web:x"},
+            "published_at": "2026-10-01T00:00:00Z",
+            "offers": [{
+                "id": "enrollment",
+                "labels": {"en": "Enrollment"},
+                "descriptions": {},
+                "category": {"id": "education", "labels": {}, "icon": "graduation-cap"},
+            }],
+        }),
+    )
+    .await;
+    env.cmd()
+        .args(["catalog", "issuer", "iss_x"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Uni").and(predicate::str::contains("Enrollment")));
 }
 
 // --- applications and issuance ----------------------------------------------

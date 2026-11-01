@@ -115,6 +115,7 @@ and `create`, `update <id>`, `delete <id>` (which asks first, unless `--yes`).
 | `almena account link-email \| unlink-email \| link-wallet \| unlink <id>` | Link or unlink ways in |
 | `almena token list \| create \| delete` | API tokens for scripts and CI |
 | `almena tenant list \| get \| update \| health` | Your tenants; the tenant's name, mediator and signing flow; what it still needs |
+| `almena tenant activity [--days <n>]` | What the tenant's issuers and verifiers did per day (7–90 days), and the totals of applications, credentials and verifications |
 | `almena tenant use <id-or-name>` | Work in that tenant from now on (this profile) |
 | `almena issuer list \| get \| create \| update \| delete` | The tenant's issuers (`verifier` the same, for verifiers); `--description LANG=TEXT`, once per language |
 | `almena issuer publish \| unpublish <id>` | Publish (admins: its DID resolves and the catalogue lists it), or back to a draft |
@@ -134,9 +135,12 @@ and `create`, `update <id>`, `delete <id>` (which asks first, unless `--yes`).
 | `almena subscription get [<account>] \| list \| set <account> \| remove <account>` | The tenant's subscription and the features it gives; the trust anchor's admins list every account and set (`--status`, `--plan`, `--until`, `--note`) or remove its subscription |
 | `almena field list \| create \| update \| delete` | The tenant's own fields (`custom:{key}` in forms); the trust anchor's are Almena's catalogue (`--category`, `--source`; groups with `--type group` and their `parts` in `--file`) |
 | `almena value-domain list \| create \| update \| delete` | The trust anchor's value lists, which coded fields draw on (`--file` with `codes`, `--key`, `--label`, `--source`); refused for any other tenant. `almena field create --domain <key>` builds a coded field on one |
-| `almena category list \| create \| update \| delete` | The trust anchor's categories for fields and credential types (`--kind`, `--key`, `--label`); refused for any other tenant |
+| `almena category list \| create \| update \| delete` | The trust anchor's categories for fields and credential types (`--kind`, `--key`, `--label`, `--icon`); refused for any other tenant |
 | `almena credential-type list \| create \| update \| delete` | The tenant's own credential types (`custom:{key}`, when its subscription allows it); the trust anchor's are Almena's catalogue (`--claim`, `--optional-claim`, `--issuance`, `--vct`, `--w3c-type`, `--mdoc-doctype`) |
 | `almena catalog fields \| credentials \| issuers \| verifiers \| mediators \| offers` | Almena's public catalogues and what is published (no sign-in); `issuers --search <text> --grants <type>` narrows them |
+| `almena catalog offers --query <words> --category <id>` | Offers with every word, or filed under a credential category |
+| `almena catalog offer-categories` | The credential categories offers are filed under, with their icon and how many offers each |
+| `almena catalog issuer <issuer-slug>` | A published issuer and everything it offers |
 | `almena catalog offer <issuer-slug> <type>` | An issuer's offer |
 | `almena application list \| get \| file \| decide` | Applications the tenant's issuers received (a page at a time; `--all`); accept or reject one |
 | `almena issuance get \| set \| sign <application>` | Settle an accepted application's credential and sign it from the wallet |

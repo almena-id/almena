@@ -25,14 +25,20 @@ pub enum CategoryCommand {
         /// Its name in a language, LANG=TEXT; one per language of the portal.
         #[arg(long, value_name = "LANG=TEXT", value_parser = parse_text, required = true)]
         label: Vec<(String, String)>,
+        /// What it is drawn with (`tag`, `id-card`, `graduation-cap`…); the API's default when left out.
+        #[arg(long)]
+        icon: Option<String>,
     },
-    /// Rename one; its kind and key never change.
+    /// Rename one or change its icon; its kind and key never change.
     Update {
         /// Its id.
         id: String,
         /// Its name in a language, LANG=TEXT; one per language of the portal.
         #[arg(long, value_name = "LANG=TEXT", value_parser = parse_text, required = true)]
         label: Vec<(String, String)>,
+        /// What it is drawn with (`tag`, `id-card`, `graduation-cap`…); kept when left out.
+        #[arg(long)]
+        icon: Option<String>,
     },
     /// Delete one nothing is filed under.
     Delete {
@@ -61,6 +67,7 @@ const COLUMNS: &[Column] = &[
     col("Kind", "kind"),
     col("Key", "key"),
     col("Name", "labels"),
+    col("Icon", "icon"),
     col("Uses", "uses"),
 ];
 
@@ -71,18 +78,25 @@ pub fn run(ctx: &Context, command: CategoryCommand) -> anyhow::Result<()> {
         CategoryCommand::List => ctx
             .out
             .list(&api.get(&["tenants", &tenant, "categories"])?, COLUMNS),
-        CategoryCommand::Create { kind, key, label } => {
-            let made = api.post(
-                &["tenants", &tenant, "categories"],
-                &json!({"kind": kind.api(), "key": key, "labels": texts(&label)}),
-            )?;
+        CategoryCommand::Create {
+            kind,
+            key,
+            label,
+            icon,
+        } => {
+            let mut body = json!({"kind": kind.api(), "key": key, "labels": texts(&label)});
+            if let Some(icon) = icon {
+                body["icon"] = json!(icon);
+            }
+            let made = api.post(&["tenants", &tenant, "categories"], &body)?;
             ctx.out.item(&made, COLUMNS);
         }
-        CategoryCommand::Update { id, label } => {
-            let changed = api.patch(
-                &["tenants", &tenant, "categories", &id],
-                &json!({"labels": texts(&label)}),
-            )?;
+        CategoryCommand::Update { id, label, icon } => {
+            let mut body = json!({"labels": texts(&label)});
+            if let Some(icon) = icon {
+                body["icon"] = json!(icon);
+            }
+            let changed = api.patch(&["tenants", &tenant, "categories", &id], &body)?;
             ctx.out.item(&changed, COLUMNS);
         }
         CategoryCommand::Delete { id } => {

@@ -29,7 +29,24 @@ pub enum CatalogCommand {
     /// Published mediators, newest first.
     Mediators(PageArgs),
     /// Every published issuer's offers: a credential type it grants on request.
-    Offers(PageArgs),
+    Offers {
+        #[command(flatten)]
+        page: PageArgs,
+        /// Only those with every word in the type's names, descriptions or
+        /// category, or the issuer's name or description.
+        #[arg(long, value_name = "WORDS")]
+        query: Option<String>,
+        /// Only those filed under this credential category (see `almena catalog offer-categories`).
+        #[arg(long, value_name = "ID")]
+        category: Option<String>,
+    },
+    /// The credential categories offers are filed under, the most offered first.
+    OfferCategories,
+    /// A published issuer and everything it offers.
+    Issuer {
+        /// The issuer's slug (`iss_…`).
+        slug: String,
+    },
     /// An issuer's offer: the credential type and the form to apply with.
     Offer {
         /// The issuer's slug (`iss_…`).
@@ -121,8 +138,16 @@ pub fn run(ctx: &Context, command: CatalogCommand) -> anyhow::Result<()> {
                 ],
             );
         }
-        CatalogCommand::Offers(page) => {
-            let items = paged(&api, &["catalog", "offers"], &page)?;
+        CatalogCommand::Offers {
+            page,
+            query,
+            category,
+        } => {
+            let filters: Vec<(&str, String)> = [("q", query), ("category", category)]
+                .into_iter()
+                .filter_map(|(name, value)| value.map(|value| (name, value)))
+                .collect();
+            let items = paged_with(&api, &["catalog", "offers"], &page, &filters)?;
             ctx.out.list(
                 &items,
                 &[
@@ -131,6 +156,44 @@ pub fn run(ctx: &Context, command: CatalogCommand) -> anyhow::Result<()> {
                     col("Type", "credential_type.id"),
                     col("Label", "credential_type.labels"),
                     col("Category", "credential_type.category.id"),
+                    col("Icon", "credential_type.category.icon"),
+                ],
+            );
+        }
+        CatalogCommand::OfferCategories => {
+            ctx.out.list(
+                &api.get(&["catalog", "offers", "categories"])?,
+                &[
+                    col("ID", "id"),
+                    col("Name", "labels"),
+                    col("Icon", "icon"),
+                    col("Offers", "offers"),
+                ],
+            );
+        }
+        CatalogCommand::Issuer { slug } => {
+            let issuer = api.get(&["catalog", "issuers", &slug, "offers"])?;
+            if ctx.out.is_json() {
+                ctx.out.document(&issuer);
+                return Ok(());
+            }
+            ctx.out.item(
+                &issuer,
+                &[
+                    col("Slug", "issuer.slug"),
+                    col("Name", "issuer.name"),
+                    col("Description", "issuer.description"),
+                    col("DID", "issuer.did"),
+                    col("Published", "published_at"),
+                ],
+            );
+            ctx.out.list(
+                &issuer["offers"],
+                &[
+                    col("Type", "id"),
+                    col("Label", "labels"),
+                    col("Category", "category.id"),
+                    col("Icon", "category.icon"),
                 ],
             );
         }

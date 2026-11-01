@@ -36,6 +36,12 @@ pub enum TenantCommand {
     },
     /// What the tenant still needs set up to operate.
     Health,
+    /// What its issuers and verifiers did, day by day, and where things stand.
+    Activity {
+        /// How many UTC days, today the last of them (7–90); the API's default when left out.
+        #[arg(long)]
+        days: Option<u16>,
+    },
     /// Work in this tenant from now on (by id or name), in this profile.
     Use {
         /// The tenant's id or name.
@@ -136,6 +142,37 @@ pub fn run(ctx: &mut Context, command: TenantCommand) -> anyhow::Result<()> {
                 );
             }
         }
+        TenantCommand::Activity { days } => {
+            let tenant = ctx.tenant(&api)?;
+            let query: Vec<(&str, String)> = days
+                .map(|days| ("days", days.to_string()))
+                .into_iter()
+                .collect();
+            let activity = api.get_query(&["tenants", &tenant, "activity"], &query)?;
+            if ctx.out.is_json() {
+                ctx.out.document(&activity);
+                return Ok(());
+            }
+            for (title, key) in [
+                ("Applications", "applications"),
+                ("Credentials", "credentials"),
+                ("Verifications", "verifications"),
+            ] {
+                notice(format!("{title}: {}", totals(ctx.out, &activity[key])));
+            }
+            ctx.out.list(
+                &activity["days"],
+                &[
+                    col("Date", "date"),
+                    col("Submitted", "submitted"),
+                    col("Accepted", "accepted"),
+                    col("Rejected", "rejected"),
+                    col("Issued", "issued"),
+                    col("Verified", "verified"),
+                    col("Failed", "failed"),
+                ],
+            );
+        }
         TenantCommand::Use { tenant } => {
             let id = resolve_tenant(&api, &tenant)?;
             ctx.profile_mut().tenant = Some(id.clone());
@@ -147,6 +184,20 @@ pub fn run(ctx: &mut Context, command: TenantCommand) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+/// `{"valid": 3, "revoked": 1}` as `valid 3, revoked 1`.
+fn totals(out: Output, counts: &Value) -> String {
+    counts
+        .as_object()
+        .map(|counts| {
+            counts
+                .iter()
+                .map(|(what, count)| format!("{what} {}", out.cell(count)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_else(|| "-".to_owned())
 }
 
 fn show(out: Output, tenant: &Value) {
