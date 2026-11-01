@@ -37,6 +37,9 @@ pub enum ApplicationCommand {
         /// Where to save it [default: the name it was uploaded with, here].
         #[arg(long, short = 'O', value_name = "PATH")]
         out: Option<PathBuf>,
+        /// Overwrite the file if it exists, without asking.
+        #[arg(long)]
+        force: bool,
     },
     /// Accept or reject a submitted application.
     Decide {
@@ -125,10 +128,18 @@ pub fn run(ctx: &Context, command: ApplicationCommand) -> anyhow::Result<()> {
                 &api.get(&["tenants", &tenant, "applications", &id])?,
             );
         }
-        ApplicationCommand::File { id, key, out } => {
+        ApplicationCommand::File {
+            id,
+            key,
+            out,
+            force,
+        } => {
             let (bytes, name) =
                 api.download(&["tenants", &tenant, "applications", &id, "files", &key])?;
             let path = out.unwrap_or_else(|| PathBuf::from(name.unwrap_or(key)));
+            if !force && path.exists() {
+                ctx.confirm(&format!("{} exists. Overwrite it?", path.display()))?;
+            }
             fs::write(&path, &bytes).with_context(|| format!("writing {}", path.display()))?;
             notice(format!("Saved {} ({} bytes).", path.display(), bytes.len()));
         }

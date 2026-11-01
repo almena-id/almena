@@ -11,7 +11,8 @@ curl -fsSL https://almena.id/install.sh | sh
 ```
 
 It downloads the latest release, checks it against `SHA256SUMS` and puts
-`almena` in `/usr/local/bin` (through `sudo` when needed). `ALMENA_INSTALL_DIR`
+`almena` in `/usr/local/bin` (through `sudo` when needed). On Linux it takes
+the static binary, which runs on any distribution. `ALMENA_INSTALL_DIR`
 picks another directory and `ALMENA_INSTALL_VERSION` another version:
 `curl -fsSL https://almena.id/install.sh | ALMENA_INSTALL_DIR=~/.local/bin sh`.
 Running it again upgrades.
@@ -57,8 +58,9 @@ completion in PowerShell, add this line to your `$PROFILE`:
 `almena completions powershell | Out-String | Invoke-Expression`.
 
 Every merge into `main` publishes a [release](https://github.com/almena-id/almena/releases)
-with prebuilt binaries for Linux (x86_64, Ubuntu 24.04 or later), macOS (Apple
-silicon) and Windows (x86_64), plus `SHA256SUMS`. Versions are
+with prebuilt binaries for Linux (x86_64: static with musl for any
+distribution, or with glibc for Ubuntu 24.04 or later, which Homebrew installs),
+macOS (Apple silicon) and Windows (x86_64), plus `SHA256SUMS`. Versions are
 `year.month.sequence` (e.g. `2026.10.1`); `almena --version` reports it.
 
 Each binary is signed: on macOS with Developer ID and notarized by Apple, on
@@ -126,6 +128,7 @@ and `create`, `update <id>`, `delete <id>` (which asks first, unless `--yes`).
 | `almena issuer status-list list \| sign <id>` | Its status lists (entries used, revoked, suspended, whether to sign), and signing one from the wallet (`--status-list`; the current one by default) |
 | `almena mediator list \| get \| create \| update \| delete \| publish \| unpublish` | The tenant's mediators |
 | `almena mediator choices` | The mediators the tenant, its issuers and verifiers may pick |
+| `almena mediator health <id-or-url>` | Whether a mediator is up: its `/health`, DID document and invitation, one row each; fails if any does (a URL needs no sign-in) |
 | `almena identity list \| get \| create \| update \| delete \| sign <id>` | The tenant's identities: rename one, delete one nothing acts as and nobody signed (admins), sign an identity's next DID log entry |
 | `almena pending list` | What waits in the tenant to be signed or published, in the order it is done: identities' DIDs, issuers, verifiers and mediators to publish, issuers' status lists and credentials to sign; what has to be done first, and whether it is yours |
 | `almena domain list \| add <domain> \| check <id> \| remove <id>` | Linked domains, proved by a DNS TXT record |
@@ -142,10 +145,10 @@ and `create`, `update <id>`, `delete <id>` (which asks first, unless `--yes`).
 | `almena catalog offer-categories` | The credential categories offers are filed under, with their icon and how many offers each |
 | `almena catalog issuer <issuer-slug>` | A published issuer and everything it offers |
 | `almena catalog offer <issuer-slug> <type>` | An issuer's offer |
-| `almena application list \| get \| file \| decide` | Applications the tenant's issuers received (a page at a time; `--all`); accept or reject one |
+| `almena application list \| get \| file \| decide` | Applications the tenant's issuers received (a page at a time; `--all`); save a holder's file (`--out`; an existing one only with `--force`, or asked); accept or reject one |
 | `almena issuance get \| set \| sign <application>` | Settle an accepted application's credential and sign it from the wallet |
 | `almena application credential-status <id> valid\|suspended\|revoked` | Suspend, reinstate or revoke an issued credential: the issuer's signer signs its status list from the wallet; revoking asks first |
-| `almena agent card \| ask \| chat` | Talk to the Almena agent (A2A); `ask` streams the answer |
+| `almena agent card \| ask \| chat` | Talk to the Almena agent (A2A), signed in (`card` needs no sign-in); `ask` streams the answer |
 | `almena config show \| set \| unset \| path` | The profile's settings |
 | `almena completions <shell>` | Print the completion script for bash, zsh, fish, elvish or PowerShell |
 

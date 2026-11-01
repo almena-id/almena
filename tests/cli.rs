@@ -782,6 +782,59 @@ async fn mediators_are_registered_and_changed() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_mediator_is_checked_by_url_or_id() {
+    let env = Env::new().await;
+    let did = "did:web:relay.example.com";
+    let health = |status: &str| json!({"status": status, "version": "2026.10.3", "did": did, "capacity": "ok"});
+    env.on("GET", "/relay/.well-known/did.json", json!({"id": did}))
+        .await;
+    env.on(
+        "GET",
+        "/relay/oob/invitation",
+        json!({"invitation": {"from": did}, "url": "https://relay.example.com/oob?_oob=x"}),
+    )
+    .await;
+    env.on("GET", "/relay/health", health("ok")).await;
+    // By URL: no sign-in asked for.
+    let signed_out = Env::signed_out().await;
+    signed_out
+        .cmd()
+        .args(["mediator", "health", &format!("{}/relay", env.server.uri())])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(did).and(predicate::str::contains("2026.10.3")));
+
+    // By id, among the mediators the tenant may pick, with its storage down.
+    let down = Env::new().await;
+    down.refuse(
+        "GET",
+        &tenant("/mediators/m9"),
+        404,
+        json!("mediator_not_found"),
+    )
+    .await;
+    down.on(
+        "GET",
+        &tenant("/mediator-choices"),
+        json!([{"id": "m9", "url": format!("{}/relay", down.server.uri())}]),
+    )
+    .await;
+    down.on("GET", "/relay/.well-known/did.json", json!({"id": did}))
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/relay/health"))
+        .respond_with(ResponseTemplate::new(503).set_body_json(health("degraded")))
+        .mount(&down.server)
+        .await;
+    down.cmd()
+        .args(["mediator", "health", "m9"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("degraded").and(predicate::str::contains("not served")))
+        .stderr(predicate::str::contains("1 of 3 checks failed"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn identities_are_registered_and_signed() {
     let env = Env::new().await;
     env.expect(
@@ -1395,6 +1448,38 @@ async fn an_applications_file_is_saved_by_its_name_only() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn an_applications_file_overwrites_only_when_forced() {
+    let env = Env::new().await;
+    Mock::given(method("GET"))
+        .and(path(tenant("/applications/a1/files/id_scan")))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"%PDF".to_vec()))
+        .mount(&env.server)
+        .await;
+    let saved = env.dir.path().join("scan.pdf");
+    std::fs::write(&saved, b"mine").unwrap();
+    let out = saved.to_str().unwrap();
+    env.cmd()
+        .args(["application", "file", "a1", "id_scan", "--out", out])
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("exists. Overwrite it?"));
+    assert_eq!(std::fs::read(&saved).unwrap(), b"mine");
+    env.cmd()
+        .args([
+            "application",
+            "file",
+            "a1",
+            "id_scan",
+            "--out",
+            out,
+            "--force",
+        ])
+        .assert()
+        .success();
+    assert_eq!(std::fs::read(&saved).unwrap(), b"%PDF");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn issuance_settles_the_proposal_with_changes() {
     let env = Env::new().await;
     let proposal = json!({
@@ -1551,7 +1636,7 @@ async fn json_output_is_the_apis_answer() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_agent_answers_as_it_streams() {
-    let env = Env::signed_out().await;
+    let env = Env::new().await;
     let events = [
         json!({"result": {"task": {"id": "t", "contextId": "c1", "status": {"state": "TASK_STATE_SUBMITTED"}}}}),
         json!({"result": {"artifactUpdate": {"artifact": {"parts": [{"text": "Hello "}]}}}}),
@@ -1562,6 +1647,7 @@ async fn the_agent_answers_as_it_streams() {
     Mock::given(method("POST"))
         .and(path("/a2a/jsonrpc"))
         .and(header("a2a-version", "1.0"))
+        .and(header("authorization", format!("Bearer {TOKEN}").as_str()))
         .respond_with(ResponseTemplate::new(200).set_body_raw(stream, "text/event-stream"))
         .mount(&env.server)
         .await;
@@ -1576,7 +1662,7 @@ async fn the_agent_answers_as_it_streams() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_declined_message_fails() {
-    let env = Env::signed_out().await;
+    let env = Env::new().await;
     let task =
         json!({"result": {"task": {"status": {"state": "TASK_STATE_REJECTED"}, "artifacts": []}}});
     env.on("POST", "/a2a/jsonrpc", task).await;
@@ -1624,6 +1710,33 @@ async fn settings_are_kept_per_profile() {
         .success();
     let config = std::fs::read_to_string(env.dir.path().join("config.toml")).unwrap();
     assert!(config.contains("[profiles.staging]") && !config.contains("output"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_agent_needs_a_sign_in() {
+    let env = Env::signed_out().await;
+    env.cmd()
+        .env("ALMENA_AGENT_URL", env.server.uri())
+        .args(["agent", "ask", "Hi"])
+        .assert()
+        .failure()
+        .code(3);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_sign_in_says_to_log_in() {
+    let env = Env::new().await;
+    Mock::given(method("POST"))
+        .and(path("/a2a/jsonrpc"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&env.server)
+        .await;
+    env.cmd()
+        .env("ALMENA_AGENT_URL", env.server.uri())
+        .args(["agent", "ask", "--no-stream", "Hi"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("almena auth login"));
 }
 
 // --- members, forms and identities: changing and removing ---------------------

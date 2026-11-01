@@ -5,8 +5,10 @@
 #   curl -fsSL https://almena.id/install.sh | sh
 #
 # Only the platforms with a release binary are installed: macOS on Apple
-# silicon and Linux on x86_64 (Ubuntu 24.04 or later). The archive is checked
-# against the release's SHA256SUMS before anything is copied.
+# silicon and Linux on x86_64. On Linux it takes the static (musl) binary,
+# which runs whatever the distribution's glibc; a release made before there
+# was one gets the glibc binary (Ubuntu 24.04 or later). The archive is
+# checked against the release's SHA256SUMS before anything is copied.
 #
 # Settings, through the environment (after `| `, e.g. `| ALMENA_INSTALL_DIR=~/bin sh`):
 #
@@ -51,7 +53,7 @@ target() {
             ;;
         Linux)
             case "$arch" in
-                x86_64 | amd64) echo x86_64-unknown-linux-gnu ;;
+                x86_64 | amd64) echo x86_64-unknown-linux-musl ;;
                 *) fail "Linux on $arch has no binary; only x86_64 is supported" ;;
             esac
             ;;
@@ -83,6 +85,11 @@ sha256() {
     fi
 }
 
+# The checksum SHA256SUMS ($2) lists for a file ($1), or nothing.
+checksum() {
+    awk -v file="$1" '$2 == file || $2 == "*" file { print $1 }' "$2"
+}
+
 main() {
     need curl
     need tar
@@ -93,20 +100,25 @@ main() {
     version=${version#v}
     [ -n "$version" ] || version=$(latest_version)
 
-    name="almena-$version-$target"
     base="https://github.com/$REPO/releases/download/v$version"
 
     tmp=$(mktemp -d 2> /dev/null || mktemp -d -t almena)
     trap 'rm -rf "$tmp"' EXIT INT TERM
 
+    curl -fsSL --proto '=https' --tlsv1.2 -o "$tmp/SHA256SUMS" "$base/SHA256SUMS" ||
+        fail "could not download $base/SHA256SUMS (is $version a published version?)"
+
+    # Releases made before the static Linux binary have only the glibc one.
+    if [ "$target" = x86_64-unknown-linux-musl ] && [ -z "$(checksum "almena-$version-$target.tar.gz" "$tmp/SHA256SUMS")" ]; then
+        target=x86_64-unknown-linux-gnu
+    fi
+    name="almena-$version-$target"
+    expected=$(checksum "$name.tar.gz" "$tmp/SHA256SUMS")
+    [ -n "$expected" ] || fail "SHA256SUMS has no line for $name.tar.gz"
+
     say "downloading almena $version for $target"
     curl -fsSL --proto '=https' --tlsv1.2 -o "$tmp/$name.tar.gz" "$base/$name.tar.gz" ||
-        fail "could not download $base/$name.tar.gz (is $version a published version?)"
-    curl -fsSL --proto '=https' --tlsv1.2 -o "$tmp/SHA256SUMS" "$base/SHA256SUMS" ||
-        fail "could not download $base/SHA256SUMS"
-
-    expected=$(awk -v file="$name.tar.gz" '$2 == file || $2 == "*" file { print $1 }' "$tmp/SHA256SUMS")
-    [ -n "$expected" ] || fail "SHA256SUMS has no line for $name.tar.gz"
+        fail "could not download $base/$name.tar.gz"
     actual=$(sha256 "$tmp/$name.tar.gz")
     [ "$expected" = "$actual" ] || fail "checksum mismatch for $name.tar.gz (expected $expected, got $actual)"
 

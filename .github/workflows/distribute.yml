@@ -84,12 +84,12 @@ jobs:
       HOMEBREW_NO_AUTO_UPDATE: "1"
       HOMEBREW_NO_ANALYTICS: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: v${{ needs.release.outputs.version }}
           sparse-checkout: packaging/homebrew
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: almena-id/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -146,12 +146,12 @@ jobs:
     env:
       VERSION: ${{ needs.release.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: v${{ needs.release.outputs.version }}
           sparse-checkout: packaging/scoop
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: almena-id/scoop-bucket
           token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
@@ -206,7 +206,7 @@ jobs:
       VERSION: ${{ needs.release.outputs.version }}
       MANIFESTS: manifests/a/AlmenaID/Almena/${{ needs.release.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: v${{ needs.release.outputs.version }}
           sparse-checkout: packaging/winget

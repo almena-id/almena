@@ -1,6 +1,8 @@
 //! `almena agent`: the Almena agent, over A2A 1.0 (JSON-RPC binding). Each
 //! message opens a task whose reply streams back as one text artifact;
-//! messages sharing a context are one conversation.
+//! messages sharing a context are one conversation. The agent asks for the
+//! sign-in (`ALMENA_TOKEN` or the profile's) on every message; its card is
+//! public.
 
 use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::time::Duration;
@@ -11,7 +13,7 @@ use reqwest::blocking::Client as Http;
 use serde_json::{Value, json};
 
 use crate::cli::VERSION;
-use crate::context::{Context, prompt};
+use crate::context::{Context, NotSignedIn, prompt};
 use crate::output::{col, notice};
 
 const JSONRPC: &str = "a2a/jsonrpc";
@@ -46,6 +48,8 @@ struct Agent {
     http: Http,
     base: url::Url,
     verbose: bool,
+    /// The bearer token messages carry; none for the card.
+    token: Option<String>,
 }
 
 /// How a task ended, and the conversation it belongs to.
@@ -56,7 +60,11 @@ struct Reply {
 }
 
 pub fn run(ctx: &Context, command: AgentCommand) -> anyhow::Result<()> {
-    let agent = Agent::new(&ctx.agent_url, ctx.global.verbose)?;
+    let token = match command {
+        AgentCommand::Card => None,
+        _ => Some(ctx.stored()?.ok_or(NotSignedIn)?.token),
+    };
+    let agent = Agent::new(&ctx.agent_url, ctx.global.verbose, token)?;
     match command {
         AgentCommand::Card => {
             let card = agent.card()?;
@@ -141,7 +149,7 @@ fn finish(reply: &Reply) -> anyhow::Result<()> {
 }
 
 impl Agent {
-    fn new(base: &str, verbose: bool) -> anyhow::Result<Self> {
+    fn new(base: &str, verbose: bool, token: Option<String>) -> anyhow::Result<Self> {
         let mut base = url::Url::parse(base).with_context(|| format!("not a URL: {base}"))?;
         if !base.path().ends_with('/') {
             base.set_path(&format!("{}/", base.path()));
@@ -156,6 +164,7 @@ impl Agent {
             http,
             base,
             verbose,
+            token,
         })
     }
 
@@ -192,14 +201,20 @@ impl Agent {
         }
         let body =
             json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": {"message": message}});
-        let response = self
+        let mut request = self
             .http
             .post(self.url(JSONRPC)?)
             .header("A2A-Version", A2A_VERSION)
-            .json(&body)
-            .send()
-            .context("could not reach the agent")?;
-        Ok(response.error_for_status()?)
+            .json(&body);
+        if let Some(token) = &self.token {
+            request = request.bearer_auth(token);
+        }
+        let response = request.send().context("could not reach the agent")?;
+        match response.status().as_u16() {
+            401 => bail!("the agent did not take the sign-in: run `almena auth login`"),
+            429 => bail!("too many messages to the agent; try again in a minute"),
+            _ => Ok(response.error_for_status()?),
+        }
     }
 
     /// The whole task, once it is done.
